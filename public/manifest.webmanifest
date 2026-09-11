@@ -1,7 +1,7 @@
 {
-  "name": "Stock Velocity Report",
-  "short_name": "Velocity",
-  "description": "Merge closing stock data and see which models sell fast vs slow",
+  "name": "Sara Stock & IBT",
+  "short_name": "Stock & IBT",
+  "description": "Live multi-shop, multi-country stock report and Inter-Branch Transfer system",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#fdfbf7",

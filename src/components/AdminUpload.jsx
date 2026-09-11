@@ -142,6 +142,13 @@ export default function AdminUpload({ onUploaded }) {
           .eq('id', uploadRow.id);
         if (completeErr) throw completeErr;
 
+        // The report reads from a pre-computed (materialized) summary for
+        // speed at this data volume — it needs an explicit refresh after
+        // each upload, since it doesn't auto-update like a normal view.
+        setStatus('refreshing');
+        const { error: refreshErr } = await supabase.rpc('refresh_stock_summary');
+        if (refreshErr) throw refreshErr;
+
         setProgress({ done: totalMapped, total: totalRead });
         setStatus('done');
         onUploaded?.();
@@ -194,6 +201,7 @@ export default function AdminUpload({ onUploaded }) {
               </div>
             </div>
           )}
+          {status === 'refreshing' && <div>Refreshing report…</div>}
           {status === 'done' && (
             <div className="upload-done">
               Done — {progress.done.toLocaleString()} rows uploaded for {country}
