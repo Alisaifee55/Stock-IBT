@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import * as XLSX from 'xlsx';
+import { readXlsxStreaming } from '../lib/xlsxStreamReader';
 import { supabase } from '../lib/supabaseClient';
 import { COUNTRIES } from '../lib/stockQueries';
 import { UploadIcon } from './icons';
 
-const BATCH_SIZE = 500;
+const INSERT_BATCH_SIZE = 500; // Supabase insert batch size (smaller than the
+// parser's read batch size, which just controls how often we yield rows)
 
 const COLUMN_MAP = {
   ModelNo: 'model_no',
@@ -45,6 +46,19 @@ function parseDateToIso(v) {
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
+function mapRow(r, uploadId, shopByCode) {
+  const shopId = shopByCode.get(r.GodownShortName);
+  if (!shopId) return null;
+  const out = { upload_id: uploadId, shop_id: shopId };
+  for (const [src, dest] of Object.entries(COLUMN_MAP)) {
+    let v = r[src];
+    if (DATE_FIELDS.has(dest)) v = parseDateToIso(v);
+    else if (v === '') v = dest.includes('price') || dest === 'brand' || dest === 'category' ? null : 0;
+    out[dest] = v;
+  }
+  return out;
+}
+
 export default function AdminUpload({ onUploaded }) {
   const [country, setCountry] = useState('UAE');
   const [fileName, setFileName] = useState('');
@@ -59,17 +73,9 @@ export default function AdminUpload({ onUploaded }) {
       setError('');
       setSkippedRows(0);
       setStatus('reading');
+      setProgress({ done: 0, total: 0 });
 
       try {
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rawRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-        if (rawRows.length === 0) throw new Error('No data rows found in the sheet.');
-
-        // Only match shops belonging to the selected country — this file is
-        // that country's data, so a shop code from a different country should
-        // never silently match here.
         const { data: shops, error: shopsErr } = await supabase.from('shops').select('id, code').eq('country', country);
         if (shopsErr) throw shopsErr;
         const shopByCode = new Map(shops.map((s) => [s.code, s.id]));
@@ -80,58 +86,63 @@ export default function AdminUpload({ onUploaded }) {
 
         const { data: uploadRow, error: uploadErr } = await supabase
           .from('stock_uploads')
-          .insert({
-            uploaded_by: user.id,
-            source_filename: file.name,
-            row_count: rawRows.length,
-            status: 'processing',
-            country,
-          })
+          .insert({ uploaded_by: user.id, source_filename: file.name, row_count: 0, status: 'processing', country })
           .select()
           .single();
         if (uploadErr) throw uploadErr;
 
+        setStatus('uploading');
+
         let skipped = 0;
-        const mapped = rawRows
-          .map((r) => {
-            const shopId = shopByCode.get(r.GodownShortName);
-            if (!shopId) {
-              skipped += 1;
-              return null;
+        let insertBuffer = [];
+        let totalMapped = 0;
+
+        const flushInsertBuffer = async () => {
+          if (insertBuffer.length === 0) return;
+          const { error: insertErr } = await supabase.from('stock_items').insert(insertBuffer);
+          if (insertErr) throw insertErr;
+          totalMapped += insertBuffer.length;
+          insertBuffer = [];
+          setProgress((p) => ({ ...p, done: totalMapped }));
+        };
+
+        // Rows stream in from the parser in read-batches; we map + re-batch
+        // them for Supabase inserts as they arrive, so peak memory stays
+        // proportional to one batch — not the whole file — regardless of
+        // whether it's 300k rows or several times that.
+        const totalRead = await readXlsxStreaming(file, {
+          batchSize: 2000,
+          onProgress: (n) => setProgress((p) => ({ ...p, total: n })),
+          onBatch: async (rawBatch) => {
+            for (const r of rawBatch) {
+              const mapped = mapRow(r, uploadRow.id, shopByCode);
+              if (!mapped) {
+                skipped += 1;
+                continue;
+              }
+              insertBuffer.push(mapped);
+              if (insertBuffer.length >= INSERT_BATCH_SIZE) {
+                await flushInsertBuffer();
+              }
             }
-            const out = { upload_id: uploadRow.id, shop_id: shopId };
-            for (const [src, dest] of Object.entries(COLUMN_MAP)) {
-              let v = r[src];
-              if (DATE_FIELDS.has(dest)) v = parseDateToIso(v);
-              else if (v === '') v = dest.includes('price') || dest === 'brand' || dest === 'category' ? null : 0;
-              out[dest] = v;
-            }
-            return out;
-          })
-          .filter(Boolean);
+          },
+        });
+        await flushInsertBuffer();
         setSkippedRows(skipped);
 
-        if (mapped.length === 0) {
+        if (totalMapped === 0) {
           throw new Error(
-            `No rows matched any ${country} shop code. Double-check you selected the right country, and that ${country} shops have been created (Manage Shops).`
+            `No rows matched any ${country} shop code (out of ${totalRead} rows read). Double-check you selected the right country, and that ${country} shops have been created (Manage Shops).`
           );
-        }
-
-        setStatus('uploading');
-        setProgress({ done: 0, total: mapped.length });
-        for (let i = 0; i < mapped.length; i += BATCH_SIZE) {
-          const batch = mapped.slice(i, i + BATCH_SIZE);
-          const { error: insertErr } = await supabase.from('stock_items').insert(batch);
-          if (insertErr) throw insertErr;
-          setProgress({ done: Math.min(i + BATCH_SIZE, mapped.length), total: mapped.length });
         }
 
         const { error: completeErr } = await supabase
           .from('stock_uploads')
-          .update({ status: 'completed' })
+          .update({ status: 'completed', row_count: totalRead })
           .eq('id', uploadRow.id);
         if (completeErr) throw completeErr;
 
+        setProgress({ done: totalMapped, total: totalRead });
         setStatus('done');
         onUploaded?.();
       } catch (err) {
@@ -173,7 +184,8 @@ export default function AdminUpload({ onUploaded }) {
           {status === 'reading' && <div>Reading workbook…</div>}
           {status === 'uploading' && (
             <div>
-              Uploading {progress.done.toLocaleString()} / {progress.total.toLocaleString()} rows…
+              Uploading {progress.done.toLocaleString()}
+              {progress.total ? ` / ${progress.total.toLocaleString()}` : ''} rows…
               <div className="bar-track">
                 <div
                   className="bar-fill"
@@ -184,7 +196,7 @@ export default function AdminUpload({ onUploaded }) {
           )}
           {status === 'done' && (
             <div className="upload-done">
-              Done — {progress.total.toLocaleString()} rows uploaded for {country}
+              Done — {progress.done.toLocaleString()} rows uploaded for {country}
               {skippedRows > 0 && ` (${skippedRows} rows skipped: unrecognized shop code)`}
             </div>
           )}
