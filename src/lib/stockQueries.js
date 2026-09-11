@@ -6,26 +6,33 @@ const PAGE_SIZE = 100;
 /** All shops, fetched once — small reference table (~9 rows). */
 export function useShops() {
   const [shopsById, setShopsById] = useState(new Map());
+  const [shopsList, setShopsList] = useState([]);
+  const [refreshToken, setRefreshToken] = useState(0);
   useEffect(() => {
     let cancelled = false;
     supabase
       .from('shops')
-      .select('id, code, name')
+      .select('id, code, name, country')
       .then(({ data }) => {
         if (cancelled || !data) return;
         setShopsById(new Map(data.map((s) => [s.id, s])));
+        setShopsList(data);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
-  return shopsById;
+  }, [refreshToken]);
+  const refresh = useCallback(() => setRefreshToken((t) => t + 1), []);
+  return { shopsById, shopsList, refresh };
 }
+
+export const COUNTRIES = ['UAE', 'KUWAIT', 'OMAN'];
 
 export const EMPTY_FILTERS = {
   shopIds: new Set(),
   categories: new Set(),
   brands: new Set(),
+  countries: new Set(['UAE', 'OMAN']), // Kuwait opt-in, per your confirmation
   showZeroStock: false,
   includeNeverSold: false, // matches the standalone app's established default
   daysSinceLastSaleMin: '',
@@ -33,11 +40,12 @@ export const EMPTY_FILTERS = {
   modelSearch: '',
 };
 
-function applyCommonFilters(query, filters, { skipShop, skipCategory, skipBrand } = {}) {
+function applyCommonFilters(query, filters, { skipShop, skipCategory, skipBrand, skipCountry } = {}) {
   if (!filters.showZeroStock) query = query.gt('closing_stock', 0);
   if (!skipShop && filters.shopIds.size) query = query.in('shop_id', Array.from(filters.shopIds));
   if (!skipCategory && filters.categories.size) query = query.in('category', Array.from(filters.categories));
   if (!skipBrand && filters.brands.size) query = query.in('brand', Array.from(filters.brands));
+  if (!skipCountry && filters.countries.size) query = query.in('shop_country', Array.from(filters.countries));
   if (filters.modelSearch.trim()) query = query.ilike('model_no', `%${filters.modelSearch.trim()}%`);
 
   const hasDaysFilter = filters.daysSinceLastSaleMin !== '' || filters.daysSinceLastSaleMax !== '';
@@ -70,6 +78,7 @@ export function useStockSummary(filters, sort) {
         shopIds: Array.from(filters.shopIds).sort(),
         categories: Array.from(filters.categories).sort(),
         brands: Array.from(filters.brands).sort(),
+        countries: Array.from(filters.countries).sort(),
         showZeroStock: filters.showZeroStock,
         includeNeverSold: filters.includeNeverSold,
         daysSinceLastSaleMin: filters.daysSinceLastSaleMin,
@@ -122,8 +131,8 @@ export function useStockSummary(filters, sort) {
 }
 
 /** Cascading filter option lists — each dimension computed against every OTHER active filter. */
-export function useFilterOptions(filters, shopsById) {
-  const [options, setOptions] = useState({ shopIds: [], categories: [], brands: [] });
+export function useFilterOptions(filters) {
+  const [options, setOptions] = useState({ shops: [], categories: [], brands: [] });
 
   const filtersKey = useMemo(
     () =>
@@ -131,6 +140,7 @@ export function useFilterOptions(filters, shopsById) {
         shopIds: Array.from(filters.shopIds).sort(),
         categories: Array.from(filters.categories).sort(),
         brands: Array.from(filters.brands).sort(),
+        countries: Array.from(filters.countries).sort(),
         showZeroStock: filters.showZeroStock,
         includeNeverSold: filters.includeNeverSold,
         daysSinceLastSaleMin: filters.daysSinceLastSaleMin,
@@ -143,15 +153,12 @@ export function useFilterOptions(filters, shopsById) {
     let cancelled = false;
 
     async function run() {
-      // Deliberately NOT using PostgREST relationship-embedding (e.g.
-      // `.select('shop_id, shops(code,name)')`) here — that requires a real
-      // foreign key PostgREST can introspect, which views like stock_summary
-      // generally don't expose reliably. Instead we fetch bare shop_id values
-      // and resolve their code/name from the already-fetched shops table.
+      // stock_summary now carries shop_code directly (via a real SQL join in
+      // the view itself), so no separate shops-table lookup is needed here.
       const [shopQ, catQ, brandQ] = await Promise.all([
-        applyCommonFilters(supabase.from('stock_summary').select('shop_id'), filters, { skipShop: true }).limit(
-          5000
-        ),
+        applyCommonFilters(supabase.from('stock_summary').select('shop_id, shop_code'), filters, {
+          skipShop: true,
+        }).limit(5000),
         applyCommonFilters(supabase.from('stock_summary').select('category'), filters, { skipCategory: true }).limit(
           5000
         ),
@@ -159,11 +166,18 @@ export function useFilterOptions(filters, shopsById) {
       ]);
       if (cancelled) return;
 
-      const shopIds = Array.from(new Set((shopQ.data || []).map((r) => r.shop_id).filter(Boolean)));
+      const shopMap = new Map();
+      (shopQ.data || []).forEach((r) => {
+        if (r.shop_id) shopMap.set(r.shop_id, r.shop_code);
+      });
+      const shops = Array.from(shopMap.entries())
+        .map(([id, code]) => ({ id, code }))
+        .sort((a, b) => a.code.localeCompare(b.code));
+
       const categories = Array.from(new Set((catQ.data || []).map((r) => r.category).filter(Boolean))).sort();
       const brands = Array.from(new Set((brandQ.data || []).map((r) => r.brand).filter(Boolean))).sort();
 
-      setOptions({ shopIds, categories, brands });
+      setOptions({ shops, categories, brands });
     }
     run();
     return () => {
@@ -171,15 +185,7 @@ export function useFilterOptions(filters, shopsById) {
     };
   }, [filtersKey]);
 
-  const shops = useMemo(
-    () =>
-      options.shopIds
-        .map((id) => ({ id, code: shopsById.get(id)?.code || '?', name: shopsById.get(id)?.name || '' }))
-        .sort((a, b) => a.code.localeCompare(b.code)),
-    [options.shopIds, shopsById]
-  );
-
-  return { shops, categories: options.categories, brands: options.brands };
+  return options;
 }
 
 /** Color/Size detail breakdown for one Model+Shop, fetched on row expand. */

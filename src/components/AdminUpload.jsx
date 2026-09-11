@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabaseClient';
+import { COUNTRIES } from '../lib/stockQueries';
 import { UploadIcon } from './icons';
 
 const BATCH_SIZE = 500;
@@ -45,6 +46,7 @@ function parseDateToIso(v) {
 }
 
 export default function AdminUpload({ onUploaded }) {
+  const [country, setCountry] = useState('UAE');
   const [fileName, setFileName] = useState('');
   const [status, setStatus] = useState('idle'); // idle | reading | uploading | done | error
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -65,7 +67,10 @@ export default function AdminUpload({ onUploaded }) {
         const rawRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
         if (rawRows.length === 0) throw new Error('No data rows found in the sheet.');
 
-        const { data: shops, error: shopsErr } = await supabase.from('shops').select('id, code');
+        // Only match shops belonging to the selected country — this file is
+        // that country's data, so a shop code from a different country should
+        // never silently match here.
+        const { data: shops, error: shopsErr } = await supabase.from('shops').select('id, code').eq('country', country);
         if (shopsErr) throw shopsErr;
         const shopByCode = new Map(shops.map((s) => [s.code, s.id]));
 
@@ -75,7 +80,13 @@ export default function AdminUpload({ onUploaded }) {
 
         const { data: uploadRow, error: uploadErr } = await supabase
           .from('stock_uploads')
-          .insert({ uploaded_by: user.id, source_filename: file.name, row_count: rawRows.length, status: 'processing' })
+          .insert({
+            uploaded_by: user.id,
+            source_filename: file.name,
+            row_count: rawRows.length,
+            status: 'processing',
+            country,
+          })
           .select()
           .single();
         if (uploadErr) throw uploadErr;
@@ -100,6 +111,12 @@ export default function AdminUpload({ onUploaded }) {
           .filter(Boolean);
         setSkippedRows(skipped);
 
+        if (mapped.length === 0) {
+          throw new Error(
+            `No rows matched any ${country} shop code. Double-check you selected the right country, and that ${country} shops have been created (Manage Shops).`
+          );
+        }
+
         setStatus('uploading');
         setProgress({ done: 0, total: mapped.length });
         for (let i = 0; i < mapped.length; i += BATCH_SIZE) {
@@ -122,16 +139,26 @@ export default function AdminUpload({ onUploaded }) {
         setStatus('error');
       }
     },
-    [onUploaded]
+    [onUploaded, country]
   );
 
   return (
     <div className="panel admin-upload-panel">
       <h3>Central stock upload (admin only)</h3>
+      <label className="country-select-label">
+        Country for this file
+        <select value={country} onChange={(e) => setCountry(e.target.value)} disabled={status === 'uploading'}>
+          {COUNTRIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
       {status === 'idle' || status === 'error' ? (
         <label className="upload-drop">
           <UploadIcon />
-          <span>{fileName ? `Retry: ${fileName}` : 'Choose CLOSING_STOCK.xlsx to upload'}</span>
+          <span>{fileName ? `Retry: ${fileName} (${country})` : `Choose the ${country} closing stock file`}</span>
           <input
             type="file"
             accept=".xlsx,.xls"
@@ -140,7 +167,9 @@ export default function AdminUpload({ onUploaded }) {
         </label>
       ) : (
         <div className="upload-status">
-          <div>{fileName}</div>
+          <div>
+            {fileName} — {country}
+          </div>
           {status === 'reading' && <div>Reading workbook…</div>}
           {status === 'uploading' && (
             <div>
@@ -155,7 +184,7 @@ export default function AdminUpload({ onUploaded }) {
           )}
           {status === 'done' && (
             <div className="upload-done">
-              Done — {progress.total.toLocaleString()} rows uploaded
+              Done — {progress.total.toLocaleString()} rows uploaded for {country}
               {skippedRows > 0 && ` (${skippedRows} rows skipped: unrecognized shop code)`}
             </div>
           )}

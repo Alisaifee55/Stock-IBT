@@ -7,12 +7,14 @@ import Login from './components/Login';
 import FilterPanelLive from './components/FilterPanelLive';
 import ReportLive from './components/ReportLive';
 import AdminUpload from './components/AdminUpload';
+import ManageShops from './components/ManageShops';
+import ChangePassword from './components/ChangePassword';
 
 export default function App() {
   const { session, account, accountError, signOut } = useAuth();
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [refreshToken, setRefreshToken] = useState(0);
-  const shopsById = useShops();
+  const { shopsList, refresh: refreshShops } = useShops();
 
   if (session === undefined) {
     return <div className="loading-screen">Loading…</div>;
@@ -41,21 +43,29 @@ export default function App() {
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
           </div>
         </div>
-        <button className="btn btn-reset signout-btn" onClick={signOut}>
-          Sign out
-        </button>
+        <div className="header-actions">
+          <ChangePassword />
+          <button className="btn btn-reset signout-btn" onClick={signOut}>
+            Sign out
+          </button>
+        </div>
       </header>
 
-      {account.isAdmin && <AdminUpload onUploaded={() => setRefreshToken((t) => t + 1)} />}
+      {account.isAdmin && (
+        <>
+          <AdminUpload
+            onUploaded={() => {
+              setRefreshToken((t) => t + 1);
+              refreshShops();
+            }}
+          />
+          <ManageShops shopsList={shopsList} onChanged={refreshShops} />
+        </>
+      )}
 
-      <FilterPanelLive
-        filters={filters}
-        setFilters={setFilters}
-        onClear={() => setFilters(EMPTY_FILTERS)}
-        shopsById={shopsById}
-      />
+      <FilterPanelLive filters={filters} setFilters={setFilters} onClear={() => setFilters(EMPTY_FILTERS)} />
 
-      <ReportLive key={refreshToken} filters={filters} shopsById={shopsById} />
+      <ReportLive key={refreshToken} filters={filters} />
 
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>

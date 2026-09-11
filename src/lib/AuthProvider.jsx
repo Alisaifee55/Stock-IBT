@@ -32,7 +32,7 @@ export function AuthProvider({ children }) {
     setAccountError('');
     supabase
       .from('shop_accounts')
-      .select('shop_id, is_admin, shops(code, name)')
+      .select('shop_id, is_admin, shops(code, name, country)')
       .eq('user_id', session.user.id)
       .single()
       .then(({ data, error }) => {

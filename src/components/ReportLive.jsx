@@ -1,11 +1,12 @@
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { useStockSummary, useStockDetail } from '../lib/stockQueries';
 import { SortIcon } from './icons';
 
 const COLS = [
   { key: 'model_no', label: 'Model No', sortable: false },
   { key: 'category', label: 'Category', sortable: true, shrink: true },
-  { key: 'shop', label: 'Shop', sortable: false },
+  { key: 'shop_code', label: 'Shop', sortable: false },
+  { key: 'shop_country', label: 'Country', sortable: false },
   { key: 'sales_price', label: 'SP', sortable: true },
   { key: 'closing_stock', label: 'Closing Stock', sortable: true },
   { key: 'total_sales', label: 'Total Sales', sortable: true },
@@ -45,7 +46,7 @@ function DetailRows({ modelNo, shopId }) {
   );
 }
 
-export default function ReportLive({ filters, shopsById }) {
+export default function ReportLive({ filters }) {
   const [sort, setSort] = useState({ key: 'sales_velocity', dir: 'desc' });
   const [expanded, setExpanded] = useState(new Set());
   const { rows, totalCount, loading, error, loadMore, hasMore } = useStockSummary(filters, sort);
@@ -69,8 +70,6 @@ export default function ReportLive({ filters, shopsById }) {
       return next;
     });
   };
-
-  const shopLabel = useMemo(() => (id) => shopsById.get(id)?.code || '?', [shopsById]);
 
   return (
     <div className="panel">
@@ -109,7 +108,8 @@ export default function ReportLive({ filters, shopsById }) {
                     <td className="shrink-cell" title={r.category}>
                       {r.category}
                     </td>
-                    <td>{shopLabel(r.shop_id)}</td>
+                    <td>{r.shop_code}</td>
+                    <td>{r.shop_country}</td>
                     <td>{r.sales_price}</td>
                     <td>{r.closing_stock}</td>
                     <td>{r.total_sales}</td>

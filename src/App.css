@@ -137,3 +137,44 @@ td.detail-label { font-weight: 600; color: #8a6a1f; }
 footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-top: 50px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
 .footer-meta { display: flex; align-items: center; gap: 8px; color: #c2c9c7; }
 .footer-meta .dot { color: var(--border); }
+
+/* Header actions */
+.header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+/* Country toggle row */
+.country-toggle-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.country-label { font-size: 12.5px; font-weight: 700; color: var(--teal-dark); text-transform: uppercase; letter-spacing: 0.03em; }
+.country-chip {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 20px;
+  padding: 6px 14px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; background: var(--paper);
+}
+.country-chip.checked { border-color: var(--teal); color: var(--teal-dark); background: var(--teal-light); }
+.country-chip input { accent-color: var(--teal); }
+
+/* Manage shops */
+.manage-shops-panel { padding: 22px 24px; margin-bottom: 20px; }
+.manage-shops-panel h3 { margin: 0 0 16px; font-size: 15px; color: var(--teal-dark); }
+.manage-shops-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 20px; }
+.manage-shops-form { display: flex; flex-direction: column; gap: 10px; background: var(--paper); border-radius: 12px; padding: 16px; }
+.form-title { font-size: 13px; font-weight: 700; color: var(--teal-dark); margin-bottom: 4px; }
+.manage-shops-form label { display: block; font-size: 12px; font-weight: 700; color: var(--teal-dark); text-transform: uppercase; letter-spacing: 0.02em; }
+.manage-shops-form input, .manage-shops-form select {
+  display: block; width: 100%; margin-top: 4px; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid var(--border); font-size: 13.5px; background: #fff; text-transform: none; font-weight: 400;
+}
+.success-box { background: #e3f3ec; color: #1f6d4a; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; }
+.error-box.small { padding: 8px 12px; font-size: 12.5px; margin: 0; }
+.shops-list table { width: 100%; }
+.shops-list { margin-top: 6px; }
+
+.country-select-label {
+  display: block; font-size: 12.5px; font-weight: 700; color: var(--teal-dark); text-transform: uppercase;
+  letter-spacing: 0.02em; margin-bottom: 12px;
+}
+.country-select-label select { display: block; margin-top: 6px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 13.5px; }
+
+/* Change password */
+.change-password-form { display: flex; align-items: center; gap: 8px; }
+.change-password-form input { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; }
+.inline-error { color: #a13f33; font-size: 12px; }
+.inline-success { color: #1f6d4a; font-size: 12px; }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useFilterOptions } from '../lib/stockQueries';
+import { useFilterOptions, COUNTRIES } from '../lib/stockQueries';
 import { FilterIcon, SearchIcon } from './icons';
 
 function MultiCheck({ label, options, selected, onChange }) {
@@ -52,8 +52,8 @@ function MultiCheck({ label, options, selected, onChange }) {
   );
 }
 
-export default function FilterPanelLive({ filters, setFilters, onClear, shopsById }) {
-  const options = useFilterOptions(filters, shopsById);
+export default function FilterPanelLive({ filters, setFilters, onClear }) {
+  const options = useFilterOptions(filters);
   const [resetToken, setResetToken] = useState(0);
 
   const handleClear = () => {
@@ -67,6 +67,27 @@ export default function FilterPanelLive({ filters, setFilters, onClear, shopsByI
         <FilterIcon />
         Filters
       </h3>
+      <div className="country-toggle-row">
+        <span className="country-label">Countries shown:</span>
+        {COUNTRIES.map((c) => {
+          const checked = filters.countries.has(c);
+          return (
+            <label key={c} className={`country-chip${checked ? ' checked' : ''}`}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => {
+                  const next = new Set(filters.countries);
+                  if (e.target.checked) next.add(c);
+                  else next.delete(c);
+                  setFilters((f) => ({ ...f, countries: next }));
+                }}
+              />
+              {c}
+            </label>
+          );
+        })}
+      </div>
       <div className="toggle-row">
         <label className="zero-stock-toggle">
           <input
