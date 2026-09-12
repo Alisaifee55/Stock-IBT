@@ -1,7 +1,23 @@
-import { useCallback, useState } from 'react';
+// =============================================================
+// AdminUpload.jsx — v2.0 — 12-09-2026
+// Changes from v1.0:
+//  - Report refresh now goes through the async job queue
+//    (request_summary_refresh + poll) instead of the synchronous RPC
+//    that always died on the authenticated role's 8s statement timeout.
+//  - Every network call has a 20s timeout guard.
+//  - beforeunload warning while an upload is in flight, so closing the
+//    tab mid-run can't leave orphaned partial rows.
+//  - row_count now records rows actually stored, not rows read from the
+//    file (the old behaviour reported 25,440 for an upload that only
+//    landed 10,987 items).
+//  - Country selector and file input stay disabled for every busy state.
+// =============================================================
+
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { readXlsxStreaming } from '../lib/xlsxStreamReader';
 import { supabase } from '../lib/supabaseClient';
 import { COUNTRIES } from '../lib/stockQueries';
+import { runRefreshAndWait, withTimeout, SLOW_AFTER_MS } from '../lib/summaryRefresh';
 import { UploadIcon } from './icons';
 import logo from '../assets/sara-logo.png';
 
@@ -34,6 +50,10 @@ const COLUMN_MAP = {
 };
 const DATE_FIELDS = new Set(['first_purchase_date', 'last_purchase_date', 'first_sales_date', 'last_sales_date']);
 
+// Source export uses M/D/YY — verified across all 303,627 rows of
+// ClosingStockDetailReport (22).xlsx: the first component never exceeds
+// 12 while the second exceeds it in ~140,000 rows. Years are always
+// 2-digit (13 through 26 observed).
 function parseDateToIso(v) {
   if (v === '' || v === null || v === undefined) return null;
   const s = String(v).trim();
@@ -43,12 +63,20 @@ function parseDateToIso(v) {
     yy = yy.length === 2 ? (parseInt(yy, 10) < 70 ? '20' + yy : '19' + yy) : yy;
     return `${yy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
   }
+  // Build from parts rather than toISOString(): the latter converts to UTC
+  // and shifts the date back a day for anyone in UTC+4.
   const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  if (isNaN(d.getTime())) return null;
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function mapRow(r, uploadId, shopByCode) {
-  const shopId = shopByCode.get(r.GodownShortName);
+  // Trim/upper the code: an untrimmed " TO" silently fell through to the
+  // skipped pile before.
+  const rawCode = r.GodownShortName;
+  const code = rawCode === null || rawCode === undefined ? '' : String(rawCode).trim().toUpperCase();
+  const shopId = shopByCode.get(code);
   if (!shopId) return null;
   const out = { upload_id: uploadId, shop_id: shopId };
   for (const [src, dest] of Object.entries(COLUMN_MAP)) {
@@ -60,6 +88,8 @@ function mapRow(r, uploadId, shopByCode) {
   return out;
 }
 
+const BUSY = new Set(['reading', 'uploading', 'refreshing', 'cleaning']);
+
 export default function AdminUpload({ onUploaded }) {
   const [country, setCountry] = useState('UAE');
   const [deleteOldData, setDeleteOldData] = useState(false);
@@ -69,6 +99,27 @@ export default function AdminUpload({ onUploaded }) {
   const [error, setError] = useState('');
   const [skippedRows, setSkippedRows] = useState(0);
   const [deletedOldCount, setDeletedOldCount] = useState(null);
+  const [refreshElapsed, setRefreshElapsed] = useState(0);
+  const [refreshMs, setRefreshMs] = useState(null);
+  const unmountedRef = useRef(false);
+
+  const busy = BUSY.has(status);
+
+  useEffect(() => () => {
+    unmountedRef.current = true;
+  }, []);
+
+  // Don't let anyone close the tab mid-upload and orphan partial rows.
+  useEffect(() => {
+    if (!busy) return;
+    const warn = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [busy]);
 
   const handleFile = useCallback(
     async (file) => {
@@ -76,23 +127,34 @@ export default function AdminUpload({ onUploaded }) {
       setError('');
       setSkippedRows(0);
       setDeletedOldCount(null);
+      setRefreshElapsed(0);
+      setRefreshMs(null);
       setStatus('reading');
       setProgress({ done: 0, total: 0 });
 
       try {
-        const { data: shops, error: shopsErr } = await supabase.from('shops').select('id, code').eq('country', country);
+        const { data: shops, error: shopsErr } = await withTimeout(
+          supabase.from('shops').select('id, code').eq('country', country),
+          20000,
+          'Loading shop list'
+        );
         if (shopsErr) throw shopsErr;
-        const shopByCode = new Map(shops.map((s) => [s.code, s.id]));
+        const shopByCode = new Map(shops.map((s) => [String(s.code).trim().toUpperCase(), s.id]));
 
         const {
           data: { user },
-        } = await supabase.auth.getUser();
+        } = await withTimeout(supabase.auth.getUser(), 20000, 'Checking your session');
+        if (!user) throw new Error('Your session has expired. Please sign out and sign in again.');
 
-        const { data: uploadRow, error: uploadErr } = await supabase
-          .from('stock_uploads')
-          .insert({ uploaded_by: user.id, source_filename: file.name, row_count: 0, status: 'processing', country })
-          .select()
-          .single();
+        const { data: uploadRow, error: uploadErr } = await withTimeout(
+          supabase
+            .from('stock_uploads')
+            .insert({ uploaded_by: user.id, source_filename: file.name, row_count: 0, status: 'processing', country })
+            .select()
+            .single(),
+          20000,
+          'Creating the upload record'
+        );
         if (uploadErr) throw uploadErr;
 
         setStatus('uploading');
@@ -103,7 +165,11 @@ export default function AdminUpload({ onUploaded }) {
 
         const flushInsertBuffer = async () => {
           if (insertBuffer.length === 0) return;
-          const { error: insertErr } = await supabase.from('stock_items').insert(insertBuffer);
+          const { error: insertErr } = await withTimeout(
+            supabase.from('stock_items').insert(insertBuffer),
+            20000,
+            'Saving a batch of rows'
+          );
           if (insertErr) throw insertErr;
           totalMapped += insertBuffer.length;
           insertBuffer = [];
@@ -111,9 +177,8 @@ export default function AdminUpload({ onUploaded }) {
         };
 
         // Rows stream in from the parser in read-batches; we map + re-batch
-        // them for Supabase inserts as they arrive, so peak memory stays
-        // proportional to one batch — not the whole file — regardless of
-        // whether it's 300k rows or several times that.
+        // them for Supabase inserts as they arrive, so peak insert memory
+        // stays proportional to one batch rather than the whole file.
         const totalRead = await readXlsxStreaming(file, {
           batchSize: 2000,
           onProgress: (n) => setProgress((p) => ({ ...p, total: n })),
@@ -140,25 +205,30 @@ export default function AdminUpload({ onUploaded }) {
           );
         }
 
-        const { error: completeErr } = await supabase
-          .from('stock_uploads')
-          .update({ status: 'completed', row_count: totalRead })
-          .eq('id', uploadRow.id);
+        const { error: completeErr } = await withTimeout(
+          supabase.from('stock_uploads').update({ status: 'completed', row_count: totalMapped }).eq('id', uploadRow.id),
+          20000,
+          'Marking the upload complete'
+        );
         if (completeErr) throw completeErr;
 
-        // The report reads from a pre-computed (materialized) summary for
-        // speed at this data volume — it needs an explicit refresh after
-        // each upload, since it doesn't auto-update like a normal view.
+        // The report reads from a pre-computed (materialized) summary. The
+        // refresh is queued for a pg_cron worker and polled here — it runs
+        // as postgres, so it isn't bound by the API's 8s statement timeout.
         setStatus('refreshing');
-        const { error: refreshErr } = await supabase.rpc('refresh_stock_summary');
-        if (refreshErr) throw refreshErr;
+        const res = await runRefreshAndWait({
+          onElapsed: setRefreshElapsed,
+          isCancelled: () => unmountedRef.current,
+        });
+        if (!res?.cancelled) setRefreshMs(res.durationMs ?? null);
 
         if (deleteOldData) {
           setStatus('cleaning');
-          const { data: deletedCount, error: deleteErr } = await supabase.rpc('admin_delete_old_uploads', {
-            p_country: country,
-            p_keep_upload_id: uploadRow.id,
-          });
+          const { data: deletedCount, error: deleteErr } = await withTimeout(
+            supabase.rpc('admin_delete_old_uploads', { p_country: country, p_keep_upload_id: uploadRow.id }),
+            60000,
+            `Deleting old ${country} data`
+          );
           if (deleteErr) throw deleteErr;
           setDeletedOldCount(deletedCount ?? 0);
         }
@@ -179,7 +249,7 @@ export default function AdminUpload({ onUploaded }) {
       <h3>Central stock upload (admin only)</h3>
       <label className="country-select-label">
         Country for this file
-        <select value={country} onChange={(e) => setCountry(e.target.value)} disabled={status === 'uploading'}>
+        <select value={country} onChange={(e) => setCountry(e.target.value)} disabled={busy}>
           {COUNTRIES.map((c) => (
             <option key={c} value={c}>
               {c}
@@ -192,7 +262,7 @@ export default function AdminUpload({ onUploaded }) {
           type="checkbox"
           checked={deleteOldData}
           onChange={(e) => setDeleteOldData(e.target.checked)}
-          disabled={status === 'uploading' || status === 'refreshing' || status === 'cleaning'}
+          disabled={busy}
         />
         Delete old {country} data after this upload completes
         <span className="zero-stock-hint">(permanent — old history for {country} won't be kept)</span>
@@ -209,7 +279,7 @@ export default function AdminUpload({ onUploaded }) {
         </label>
       ) : (
         <div className="upload-status">
-          {(status === 'reading' || status === 'uploading' || status === 'refreshing' || status === 'cleaning') && (
+          {busy && (
             <div className="upload-logo-stage">
               <div className="upload-logo-ring">
                 <img src={logo} alt="" className="upload-logo-img" />
@@ -232,20 +302,45 @@ export default function AdminUpload({ onUploaded }) {
               </div>
             </div>
           )}
-          {status === 'refreshing' && <div>Refreshing report…</div>}
+          {status === 'refreshing' && (
+            <div>
+              Refreshing report… {Math.round(refreshElapsed / 1000)}s
+              {refreshElapsed > SLOW_AFTER_MS && (
+                <div className="upload-refresh-note">
+                  Still refreshing — this normally takes 10–30 seconds on a large file. Safe to leave this open.
+                </div>
+              )}
+            </div>
+          )}
           {status === 'cleaning' && <div>Deleting old {country} data…</div>}
           {status === 'done' && (
             <div className="upload-done">
-              Done — {progress.done.toLocaleString()} rows uploaded for {country}
-              {skippedRows > 0 && ` (${skippedRows} rows skipped: unrecognized shop code)`}
+              Done — {progress.done.toLocaleString()} rows stored for {country}
+              {progress.total ? ` (${progress.total.toLocaleString()} read from file)` : ''}
+              {skippedRows > 0 && (
+                <div className="upload-skipped">
+                  {skippedRows.toLocaleString()} rows skipped — their shop code doesn't exist in {country}. Add the
+                  missing codes in Manage Shops and re-upload if those shops matter.
+                </div>
+              )}
+              {refreshMs !== null && <div>Report refreshed in {(refreshMs / 1000).toFixed(1)}s.</div>}
               {deletedOldCount !== null && (
-                <div>{deletedOldCount} old {country} upload(s) deleted.</div>
+                <div>
+                  {deletedOldCount} old {country} upload(s) deleted.
+                </div>
               )}
             </div>
           )}
         </div>
       )}
-      {error && <div className="error-box">Error: {error}</div>}
+      {error && (
+        <div className="error-box">
+          Error: {error}
+          <div className="error-hint">
+            Rows already saved are kept. Choosing the file again re-uploads it as a new upload.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
