@@ -5,10 +5,13 @@
 // shops are holding it (the question that leads into an IBT request).
 //
 // The inline caret expand is unchanged — this is the richer view.
+// Each "also in stock at" shop is a Request button, so an IBT always
+// starts from a shop you can see is actually holding stock.
 // =============================================================
 
 import { useEffect, useRef, useState } from 'react';
 import { useStockDetail, useModelAcrossShops, formatIsoDate } from '../lib/stockQueries';
+import CreateTransferModal from './CreateTransferModal';
 
 // Central POS image host. One place to change if the path ever moves.
 const IMAGE_BASE = 'https://pos.saraplaza.net/modelimages';
@@ -51,10 +54,11 @@ function ModelPhoto({ modelNo }) {
   );
 }
 
-export default function ModelDetailModal({ model, onClose }) {
+export default function ModelDetailModal({ model, onClose, canRequest = false, onTransferCreated }) {
   const { modelNo, shopId, shopCode, shopCountry, category, salesPrice, lastSalesDate } = model;
   const { detail, loading, error } = useStockDetail(modelNo, shopId, true);
   const { shops: otherShops, loading: shopsLoading } = useModelAcrossShops(modelNo, shopId);
+  const [requestShop, setRequestShop] = useState(null);
   const closeBtnRef = useRef(null);
 
   // Escape closes, focus starts on the close button, body scroll locks.
@@ -182,13 +186,28 @@ export default function ModelDetailModal({ model, onClose }) {
               )}
               {!shopsLoading && otherShops.length > 0 && (
                 <div className="other-shops">
-                  {otherShops.map((s) => (
-                    <span className="other-shop-pill" key={s.shop_id}>
-                      <strong>{s.shop_code}</strong>
-                      <span className="other-shop-country">{s.shop_country}</span>
-                      <span className="other-shop-qty">{Number(s.closing_stock).toLocaleString()}</span>
-                    </span>
-                  ))}
+                  {otherShops.map((s) =>
+                    canRequest ? (
+                      <button
+                        type="button"
+                        className="other-shop-pill is-actionable"
+                        key={s.shop_id}
+                        onClick={() => setRequestShop(s)}
+                        title={`Request ${modelNo} from ${s.shop_code}`}
+                      >
+                        <strong>{s.shop_code}</strong>
+                        <span className="other-shop-country">{s.shop_country}</span>
+                        <span className="other-shop-qty">{Number(s.closing_stock).toLocaleString()}</span>
+                        <span className="other-shop-request">Request</span>
+                      </button>
+                    ) : (
+                      <span className="other-shop-pill" key={s.shop_id}>
+                        <strong>{s.shop_code}</strong>
+                        <span className="other-shop-country">{s.shop_country}</span>
+                        <span className="other-shop-qty">{Number(s.closing_stock).toLocaleString()}</span>
+                      </span>
+                    )
+                  )}
                 </div>
               )}
             </div>
@@ -201,6 +220,14 @@ export default function ModelDetailModal({ model, onClose }) {
           </button>
         </div>
       </div>
+      {requestShop && (
+        <CreateTransferModal
+          modelNo={modelNo}
+          shop={requestShop}
+          onClose={() => setRequestShop(null)}
+          onCreated={onTransferCreated}
+        />
+      )}
     </div>
   );
 }

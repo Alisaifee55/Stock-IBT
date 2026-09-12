@@ -3,8 +3,9 @@
    Changes from v1.0: header refresh pill + spinner, refresh failure
    banner, upload skipped-rows / slow-refresh notes, the admin storage
    panel with its confirm modal, the report empty state, the model
-   photo/breakdown modal, CSV export, and a responsive pass that makes
-   the header, filters, cards and 13-column report usable on a phone.
+   photo/breakdown modal, CSV export, the IBT transfers tab with its
+   detail/create modals, and a responsive pass that makes the header,
+   filters, cards and 13-column report usable on a phone.
    ============================================================= */
 
 .wrap { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
@@ -512,4 +513,87 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
   /* Touch targets stay tappable even with the tighter padding. */
   .model-link, .select-all-btn, .clear-filters-btn { min-height: 32px; }
   .floating-search-btn { bottom: 16px; right: 16px; }
+}
+
+
+/* ===== v2.0 — Report / Transfers view switch ===== */
+.view-tabs { display: flex; gap: 4px; background: var(--teal-light); border-radius: 999px; padding: 4px; margin-left: 20px; }
+.view-tab {
+  display: inline-flex; align-items: center; gap: 7px; border: none; background: transparent;
+  border-radius: 999px; padding: 7px 16px; font: inherit; font-size: 13.5px; font-weight: 600;
+  color: var(--teal-dark); cursor: pointer; transition: background 180ms ease, color 180ms ease;
+}
+.view-tab:hover:not(.is-active) { background: rgba(255, 255, 255, 0.6); }
+.view-tab.is-active { background: var(--card); box-shadow: 0 1px 3px rgba(33, 90, 86, 0.12); }
+.view-tab:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+.view-tab-badge, .ibt-tab-badge {
+  min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
+  background: var(--coral); color: #fff; font-size: 11px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ===== v2.0 — Transfers tab ===== */
+.ibt-tabs { display: flex; gap: 4px; margin-left: 14px; }
+.ibt-tab {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+  background: var(--card); border-radius: 999px; padding: 5px 14px; font: inherit;
+  font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+}
+.ibt-tab:hover:not(.is-active) { border-color: var(--teal); color: var(--teal-dark); }
+.ibt-tab.is-active { background: var(--teal); border-color: var(--teal); color: #fff; }
+.ibt-tab:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+.ibt-loading { padding: 24px 22px; }
+.ibt-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.ibt-table th {
+  position: sticky; top: 0; background: var(--teal-light); color: var(--teal-dark);
+  text-align: left; padding: 10px 14px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.ibt-table td { padding: 11px 14px; border-top: 1px solid var(--border); }
+.ibt-code { font-weight: 700; color: var(--teal-dark); font-variant-numeric: tabular-nums; }
+.ibt-pending-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--mustard); margin-left: 7px; vertical-align: middle;
+}
+
+/* ===== v2.0 — Transfer detail + create ===== */
+.transfer-modal { max-width: 720px; }
+.transfer-status-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.transfer-status-counts { font-size: 12.5px; color: var(--muted); }
+.transfer-hint {
+  font-size: 12.5px; color: var(--teal-dark); background: var(--teal-light);
+  border-radius: 10px; padding: 8px 12px; margin-bottom: 12px;
+}
+.transfer-lines .transfer-line-model { font-weight: 700; color: var(--teal-dark); }
+.transfer-line-actions { text-align: right; white-space: nowrap; }
+.transfer-line-actions .btn { padding: 4px 11px; font-size: 12px; margin-left: 6px; }
+.transfer-decided { font-size: 11.5px; color: var(--muted); }
+.btn-accept {
+  background: #5f9e6c; color: #fff; border: none; border-radius: 10px;
+  font-weight: 600; cursor: pointer; transition: transform 150ms ease, background 150ms ease;
+}
+.btn-accept:hover:not(:disabled) { background: #4f8a5b; transform: scale(1.03); }
+.btn-accept:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-accept:focus-visible { outline: 2px solid #3f6b48; outline-offset: 2px; }
+.other-shop-pill.is-actionable { cursor: pointer; transition: border-color 150ms ease, transform 150ms ease; }
+.other-shop-pill.is-actionable:hover { border-color: var(--teal); transform: translateY(-1px); }
+.other-shop-pill.is-actionable:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+.other-shop-request { font-size: 11px; font-weight: 700; color: var(--orange); text-transform: uppercase; letter-spacing: 0.04em; }
+.qty-input {
+  width: 74px; padding: 5px 8px; font: inherit; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 8px; text-align: right;
+}
+.qty-input:focus { outline: 2px solid var(--teal); outline-offset: 0; border-color: var(--teal); }
+.transfer-created { text-align: center; padding: 12px 0 4px; }
+.transfer-created-code {
+  font-size: 24px; font-weight: 700; color: var(--teal-dark);
+  letter-spacing: 0.02em; margin-bottom: 10px;
+}
+
+@media (max-width: 720px) {
+  .view-tabs { margin-left: 0; width: 100%; }
+  .view-tab { flex: 1; justify-content: center; }
+  .ibt-tabs { margin-left: 0; }
+  .transfer-line-actions { text-align: left; }
+  .transfer-line-actions .btn { margin: 2px 4px 2px 0; }
 }

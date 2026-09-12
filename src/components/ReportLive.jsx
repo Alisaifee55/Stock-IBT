@@ -113,7 +113,7 @@ function DetailRows({ modelNo, shopId }) {
   );
 }
 
-export default function ReportLive({ filters, modelJump }) {
+export default function ReportLive({ filters, modelJump, canRequest = false, onTransferCreated }) {
   const [sort, setSort] = useState({ key: 'sales_velocity', dir: 'desc' });
   const [expanded, setExpanded] = useState(new Set());
   const [openModel, setOpenModel] = useState(null);
@@ -292,7 +292,14 @@ export default function ReportLive({ filters, modelJump }) {
           </div>
         )}
       </div>
-      {openModel && <ModelDetailModal model={openModel} onClose={() => setOpenModel(null)} />}
+      {openModel && (
+        <ModelDetailModal
+          model={openModel}
+          onClose={() => setOpenModel(null)}
+          canRequest={canRequest}
+          onTransferCreated={onTransferCreated}
+        />
+      )}
     </div>
   );
 }

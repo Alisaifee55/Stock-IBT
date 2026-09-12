@@ -10,6 +10,9 @@
 //    (previously Escape in the Manage Shops password box cleared filters).
 //  - Admin-only Storage usage panel: per-country size plus an on-demand
 //    "Delete old data" button, replacing the upload checkbox.
+//  - Report / Transfers view switch, with a badge for transfer requests
+//    awaiting your response. Admin accounts get read-only oversight;
+//    only shop accounts can raise or decide a transfer.
 // =============================================================
 
 import { useCallback, useEffect, useState } from 'react';
@@ -27,6 +30,8 @@ import ChangePassword from './components/ChangePassword';
 import CountryStatusCards from './components/CountryStatusCards';
 import StorageOverview from './components/StorageOverview';
 import ModelSearchLive, { MODEL_SEARCH_INPUT_ID } from './components/ModelSearchLive';
+import IbtTransfers from './components/IbtTransfers';
+import { useIbtCounts } from './lib/ibtQueries';
 import { ResetIcon } from './components/icons';
 
 const FORM_TAGS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
@@ -37,6 +42,8 @@ export default function App() {
   const [refreshToken, setRefreshToken] = useState(0);
   const { shopsList, refresh: refreshShops } = useShops();
   const [modelJump, setModelJump] = useState(null);
+  const [view, setView] = useState('report'); // report | transfers
+  const [ibtToken, setIbtToken] = useState(0);
 
   const bumpData = useCallback(() => setRefreshToken((t) => t + 1), []);
   const {
@@ -48,6 +55,12 @@ export default function App() {
     reload: reloadRefreshStamp,
     dismissError: dismissRefreshError,
   } = useSummaryRefresh({ onComplete: bumpData });
+
+  const { counts: ibtCounts, reload: reloadIbtCounts } = useIbtCounts(ibtToken);
+  const bumpIbt = useCallback(() => {
+    setIbtToken((t) => t + 1);
+    reloadIbtCounts();
+  }, [reloadIbtCounts]);
 
   const focusModelSearch = useCallback(() => {
     const el = document.getElementById(MODEL_SEARCH_INPUT_ID);
@@ -113,6 +126,25 @@ export default function App() {
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
           </div>
         </div>
+        <nav className="view-tabs" aria-label="Main sections">
+          <button
+            type="button"
+            className={`view-tab${view === 'report' ? ' is-active' : ''}`}
+            onClick={() => setView('report')}
+          >
+            Report
+          </button>
+          <button
+            type="button"
+            className={`view-tab${view === 'transfers' ? ' is-active' : ''}`}
+            onClick={() => setView('transfers')}
+          >
+            Transfers
+            {ibtCounts.incoming_pending > 0 && (
+              <span className="view-tab-badge">{ibtCounts.incoming_pending}</span>
+            )}
+          </button>
+        </nav>
         <div className="header-actions">
           <div className={`refresh-pill${refreshing ? ' is-working' : ''}`}>
             {refreshing ? (
@@ -168,6 +200,10 @@ export default function App() {
         </div>
       )}
 
+      {view === 'transfers' ? (
+        <IbtTransfers incomingPending={ibtCounts.incoming_pending} onChanged={bumpIbt} />
+      ) : (
+      <>
       <CountryStatusCards refreshToken={refreshToken} />
 
       {account.isAdmin && (
@@ -207,7 +243,15 @@ export default function App() {
         }}
       />
 
-      <ReportLive key={refreshToken} filters={filters} modelJump={modelJump} />
+      <ReportLive
+        key={refreshToken}
+        filters={filters}
+        modelJump={modelJump}
+        canRequest={!account.isAdmin && !!account.shopId}
+        onTransferCreated={bumpIbt}
+      />
+      </>
+      )}
 
       <button
         type="button"
