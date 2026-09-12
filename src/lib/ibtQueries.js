@@ -15,6 +15,7 @@ export const TRANSFER_STATUS_LABELS = {
   partially_accepted: 'Partly accepted',
   accepted: 'Accepted',
   rejected: 'Rejected',
+  cancelled: 'Cancelled',
 };
 
 export const TRANSFER_STATUS_TONE = {
@@ -22,6 +23,7 @@ export const TRANSFER_STATUS_TONE = {
   partially_accepted: 'warning',
   accepted: 'success',
   rejected: 'error',
+  cancelled: 'neutral',
 };
 
 /** 'incoming' = we're the supplying shop. 'outgoing' = we requested it. */
@@ -165,6 +167,81 @@ export async function decideLineItem(lineItemId, decision) {
     }),
     20000,
     'Saving your decision'
+  );
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+
+/**
+ * Notifications for the header bell.
+ * Realtime gives instant delivery; the poll is the safety net for a
+ * dropped socket (phone asleep, network flap), so a missed event just
+ * means up to 60s of delay rather than a notification never arriving.
+ */
+export function useNotifications(userId, pollMs = 60000) {
+  const [items, setItems] = useState([]);
+  const [unread, setUnread] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(() => {
+    supabase
+      .rpc('get_my_notifications', { p_limit: 20 })
+      .then(({ data, error }) => {
+        if (error) return;
+        const list = data || [];
+        setItems(list);
+        setUnread(list.filter((n) => !n.is_read).length);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, pollMs);
+    return () => clearInterval(timer);
+  }, [load, pollMs]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`notifications-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        // Reload rather than appending the payload: one source of shape,
+        // and it self-corrects if we missed anything while disconnected.
+        () => load()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, load]);
+
+  const markRead = useCallback(
+    async (ids) => {
+      const target = ids && ids.length ? ids : items.filter((n) => !n.is_read).map((n) => n.id);
+      if (target.length === 0) return;
+      // Optimistic: the bell clears instantly, then we persist.
+      setItems((prev) => prev.map((n) => (target.includes(n.id) ? { ...n, is_read: true } : n)));
+      setUnread((u) => Math.max(0, u - target.length));
+      const { error } = await supabase.from('notifications').update({ is_read: true }).in('id', target);
+      if (error) load(); // roll back to server truth
+    },
+    [items, load]
+  );
+
+  return { items, unread, loading, reload: load, markRead };
+}
+
+/** Requesting shop withdraws a transfer, allowed only before any line is decided. */
+export async function cancelTransfer(transferId) {
+  const { data, error } = await withTimeout(
+    supabase.rpc('cancel_ibt_transfer', { p_transfer_id: transferId }),
+    20000,
+    'Cancelling the transfer'
   );
   if (error) throw new Error(error.message);
   return data;

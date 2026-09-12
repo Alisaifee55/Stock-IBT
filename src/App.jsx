@@ -13,6 +13,8 @@
 //  - Report / Transfers view switch, with a badge for transfer requests
 //    awaiting your response. Admin accounts get read-only oversight;
 //    only shop accounts can raise or decide a transfer.
+//  - Notification bell (realtime + 60s poll fallback); clicking a
+//    transfer notification opens that transfer directly.
 // =============================================================
 
 import { useCallback, useEffect, useState } from 'react';
@@ -31,6 +33,7 @@ import CountryStatusCards from './components/CountryStatusCards';
 import StorageOverview from './components/StorageOverview';
 import ModelSearchLive, { MODEL_SEARCH_INPUT_ID } from './components/ModelSearchLive';
 import IbtTransfers from './components/IbtTransfers';
+import NotificationBell from './components/NotificationBell';
 import { useIbtCounts } from './lib/ibtQueries';
 import { ResetIcon } from './components/icons';
 
@@ -44,6 +47,7 @@ export default function App() {
   const [modelJump, setModelJump] = useState(null);
   const [view, setView] = useState('report'); // report | transfers
   const [ibtToken, setIbtToken] = useState(0);
+  const [jumpTransferId, setJumpTransferId] = useState(null);
 
   const bumpData = useCallback(() => setRefreshToken((t) => t + 1), []);
   const {
@@ -146,6 +150,13 @@ export default function App() {
           </button>
         </nav>
         <div className="header-actions">
+          <NotificationBell
+            userId={session?.user?.id}
+            onOpenTransfer={(id) => {
+              setView('transfers');
+              setJumpTransferId(id);
+            }}
+          />
           <div className={`refresh-pill${refreshing ? ' is-working' : ''}`}>
             {refreshing ? (
               <>
@@ -201,7 +212,12 @@ export default function App() {
       )}
 
       {view === 'transfers' ? (
-        <IbtTransfers incomingPending={ibtCounts.incoming_pending} onChanged={bumpIbt} />
+        <IbtTransfers
+          incomingPending={ibtCounts.incoming_pending}
+          onChanged={bumpIbt}
+          openTransferId={jumpTransferId}
+          onOpenHandled={() => setJumpTransferId(null)}
+        />
       ) : (
       <>
       <CountryStatusCards refreshToken={refreshToken} />

@@ -5,10 +5,18 @@
 // requesting shop sees the same list read-only.
 // Each line is decided independently, and the transfer's own status
 // rolls up from them server-side.
+// The requesting shop can withdraw a transfer, but only while no line
+// has been decided — a decided line is a commitment on both sides.
 // =============================================================
 
 import { useEffect, useRef, useState } from 'react';
-import { useTransferDetail, decideLineItem, TRANSFER_STATUS_LABELS, TRANSFER_STATUS_TONE } from '../lib/ibtQueries';
+import {
+  useTransferDetail,
+  decideLineItem,
+  cancelTransfer,
+  TRANSFER_STATUS_LABELS,
+  TRANSFER_STATUS_TONE,
+} from '../lib/ibtQueries';
 import { formatStamp } from '../lib/summaryRefresh';
 
 const LINE_TONE = { pending: 'warning', accepted: 'success', rejected: 'error' };
@@ -18,6 +26,8 @@ export default function TransferDetailModal({ transferId, onClose, onChanged }) 
   const { detail, loading, error } = useTransferDetail(transferId, refreshToken);
   const [busyLine, setBusyLine] = useState('');
   const [actionError, setActionError] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const closeBtnRef = useRef(null);
 
   useEffect(() => {
@@ -51,8 +61,25 @@ export default function TransferDetailModal({ transferId, onClose, onChanged }) 
     }
   };
 
+  const handleCancel = async () => {
+    setCancelling(true);
+    setActionError('');
+    try {
+      await cancelTransfer(transferId);
+      setConfirmCancel(false);
+      setRefreshToken((n) => n + 1);
+      onChanged?.();
+    } catch (err) {
+      setActionError(err.message || 'Could not cancel this transfer.');
+      setConfirmCancel(false);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const canDecide = detail?.can_decide;
   const lines = detail?.lines || [];
+  const canCancel = detail?.can_cancel;
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
@@ -176,6 +203,27 @@ export default function TransferDetailModal({ transferId, onClose, onChanged }) 
         </div>
 
         <div className="modal-actions">
+          {canCancel && !confirmCancel && (
+            <button
+              type="button"
+              className="btn btn-danger transfer-cancel-btn"
+              onClick={() => setConfirmCancel(true)}
+              disabled={cancelling}
+            >
+              Withdraw request
+            </button>
+          )}
+          {canCancel && confirmCancel && (
+            <div className="transfer-cancel-confirm">
+              <span>Withdraw {detail.transfer_code}? This can't be undone.</span>
+              <button type="button" className="btn btn-reset" onClick={() => setConfirmCancel(false)}>
+                Keep it
+              </button>
+              <button type="button" className="btn btn-danger" onClick={handleCancel} disabled={cancelling}>
+                {cancelling ? 'Withdrawing…' : 'Yes, withdraw'}
+              </button>
+            </div>
+          )}
           <button type="button" className="btn btn-reset" onClick={onClose}>
             Close
           </button>

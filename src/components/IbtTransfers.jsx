@@ -5,7 +5,7 @@
 // supplying shop accepts or rejects each line.
 // =============================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMyTransfers, TRANSFER_STATUS_LABELS, TRANSFER_STATUS_TONE } from '../lib/ibtQueries';
 import { formatStamp } from '../lib/summaryRefresh';
 import TransferDetailModal from './TransferDetailModal';
@@ -77,10 +77,18 @@ function TransferList({ direction, refreshToken, onOpen }) {
   );
 }
 
-export default function IbtTransfers({ incomingPending, onChanged }) {
+export default function IbtTransfers({ incomingPending, onChanged, openTransferId, onOpenHandled }) {
   const [tab, setTab] = useState('incoming');
   const [refreshToken, setRefreshToken] = useState(0);
   const [openId, setOpenId] = useState(null);
+
+  // A notification click lands here with a transfer to open.
+  useEffect(() => {
+    if (openTransferId) {
+      setOpenId(openTransferId);
+      onOpenHandled?.();
+    }
+  }, [openTransferId, onOpenHandled]);
 
   const bumpAll = () => {
     setRefreshToken((t) => t + 1);

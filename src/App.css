@@ -4,8 +4,9 @@
    banner, upload skipped-rows / slow-refresh notes, the admin storage
    panel with its confirm modal, the report empty state, the model
    photo/breakdown modal, CSV export, the IBT transfers tab with its
-   detail/create modals, and a responsive pass that makes the header,
-   filters, cards and 13-column report usable on a phone.
+   detail/create modals, the notification bell, and a responsive pass
+   that makes the header, filters, cards and 13-column report usable on
+   a phone.
    ============================================================= */
 
 .wrap { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
@@ -596,4 +597,66 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
   .ibt-tabs { margin-left: 0; }
   .transfer-line-actions { text-align: left; }
   .transfer-line-actions .btn { margin: 2px 4px 2px 0; }
+}
+
+
+/* ===== v2.0 — Notification bell ===== */
+.bell-wrap { position: relative; }
+.bell-btn {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 50%;
+  background: var(--card); cursor: pointer;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+.bell-btn svg { width: 17px; height: 17px; stroke: var(--teal-dark); fill: none; stroke-width: 1.8; }
+.bell-btn:hover { border-color: var(--teal); transform: scale(1.05); }
+.bell-btn:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+.bell-btn.has-unread svg { stroke: var(--orange); }
+.bell-badge {
+  position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 4px;
+  border-radius: 999px; background: var(--coral); color: #fff; font-size: 10.5px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; border: 2px solid var(--card);
+}
+.bell-panel {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 50; width: 320px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(33, 90, 86, 0.18); overflow: hidden;
+}
+.bell-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--teal-dark);
+}
+.bell-mark-all {
+  border: none; background: transparent; color: var(--orange); cursor: pointer;
+  font: inherit; font-size: 11.5px; font-weight: 700; text-transform: none; letter-spacing: 0;
+}
+.bell-mark-all:hover { text-decoration: underline; }
+.bell-list { max-height: 340px; overflow-y: auto; }
+.bell-item {
+  display: block; width: 100%; text-align: left; border: none; background: transparent;
+  border-bottom: 1px solid var(--border); padding: 11px 14px; font: inherit; cursor: default;
+  transition: background 150ms ease;
+}
+.bell-item.is-clickable { cursor: pointer; }
+.bell-item.is-clickable:hover { background: var(--paper); }
+.bell-item.is-unread { background: var(--teal-light); }
+.bell-item.is-unread:hover { background: #dcebe9; }
+.bell-item:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: -2px; }
+.bell-item-msg { display: block; font-size: 13px; line-height: 1.45; color: var(--ink); margin-bottom: 3px; }
+.bell-item-time { display: block; font-size: 11.5px; color: var(--muted); }
+.bell-empty { padding: 26px 16px; text-align: center; font-size: 12.5px; color: var(--muted); }
+
+/* ===== v2.0 — Transfer withdrawal ===== */
+.pill-neutral { background: rgba(138, 150, 148, 0.15); color: var(--muted); }
+.transfer-cancel-btn { margin-right: auto; }
+.transfer-cancel-confirm {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-right: auto;
+  font-size: 12.5px; color: #a13f33;
+}
+
+@media (max-width: 720px) {
+  .bell-panel { width: calc(100vw - 32px); right: -8px; }
+  .transfer-cancel-btn, .transfer-cancel-confirm { margin-right: 0; }
 }
