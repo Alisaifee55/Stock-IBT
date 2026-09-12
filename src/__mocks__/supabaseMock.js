@@ -2,7 +2,7 @@
 // app actually uses, so we can test real component/query wiring without
 // needing network access to the live Supabase project.
 
-export function createSupabaseMock({ shops, stockSummary, stockItems, getAuthUser }) {
+export function createSupabaseMock({ shops, stockSummary, stockItems, stockUploads = [], getAuthUser, rpcHandlers = {} }) {
   const state = { session: null };
   const authListeners = [];
 
@@ -14,6 +14,7 @@ export function createSupabaseMock({ shops, stockSummary, stockItems, getAuthUse
       _order: null,
       _range: null,
       _single: false,
+      _maybeSingle: false,
       _count: null,
     };
 
@@ -67,6 +68,10 @@ export function createSupabaseMock({ shops, stockSummary, stockItems, getAuthUse
         q._single = true;
         return api;
       },
+      maybeSingle() {
+        q._maybeSingle = true;
+        return api;
+      },
       insert(rows) {
         q._insertRows = Array.isArray(rows) ? rows : [rows];
         return api;
@@ -100,6 +105,20 @@ export function createSupabaseMock({ shops, stockSummary, stockItems, getAuthUse
       });
     }
 
+    function applyOrderRangeLimit(data) {
+      let out = data;
+      if (q._order) {
+        out = [...out].sort((a, b) => {
+          const av = a[q._order.col] ?? -Infinity;
+          const bv = b[q._order.col] ?? -Infinity;
+          return q._order.ascending ? av - bv : bv - av;
+        });
+      }
+      if (q._range) out = out.slice(q._range[0], q._range[1] + 1);
+      if (q._limit) out = out.slice(0, q._limit);
+      return out;
+    }
+
     function execute() {
       if (table === 'shops' || table === 'shop_accounts') {
         let data = table === 'shops' ? shops : [];
@@ -110,28 +129,29 @@ export function createSupabaseMock({ shops, stockSummary, stockItems, getAuthUse
         }
         data = data.filter(rowMatches);
         if (q._single) return { data: data[0] || null, error: data[0] ? null : { message: 'not found' } };
+        if (q._maybeSingle) return { data: data[0] || null, error: null };
         return { data, error: null };
       }
       if (table === 'stock_summary') {
-        let data = stockSummary.filter(rowMatches);
-        const count = data.length;
-        if (q._order) {
-          data = [...data].sort((a, b) => {
-            const av = a[q._order.col] ?? -Infinity;
-            const bv = b[q._order.col] ?? -Infinity;
-            return q._order.ascending ? av - bv : bv - av;
-          });
-        }
-        if (q._range) data = data.slice(q._range[0], q._range[1] + 1);
-        if (q._limit) data = data.slice(0, q._limit);
+        let data = applyOrderRangeLimit(stockSummary.filter(rowMatches));
+        const count = stockSummary.filter(rowMatches).length;
+        if (q._single) return { data: data[0] || null, error: data[0] ? null : { message: 'not found' } };
+        if (q._maybeSingle) return { data: data[0] || null, error: null };
         return { data, count, error: null };
       }
       if (table === 'current_stock_items') {
         const data = stockItems.filter(rowMatches);
         return { data, error: null };
       }
-      if (table === 'stock_uploads' || table === 'stock_items') {
-        return { data: q._insertRows ? { id: 'mock-upload-id' } : null, error: null };
+      if (table === 'stock_uploads') {
+        if (q._insertRows) return { data: { id: 'mock-upload-id' }, error: null };
+        const data = applyOrderRangeLimit(stockUploads.filter(rowMatches));
+        if (q._single) return { data: data[0] || null, error: data[0] ? null : { message: 'not found' } };
+        if (q._maybeSingle) return { data: data[0] || null, error: null };
+        return { data, error: null };
+      }
+      if (table === 'stock_items') {
+        return { data: q._insertRows ? { id: 'mock-item-id' } : null, error: null };
       }
       return { data: [], error: null };
     }
@@ -141,6 +161,16 @@ export function createSupabaseMock({ shops, stockSummary, stockItems, getAuthUse
 
   return {
     from: (table) => buildQuery(table),
+    rpc: async (fnName, args) => {
+      const handler = rpcHandlers[fnName];
+      if (!handler) return { data: null, error: { message: `No mock handler for rpc ${fnName}` } };
+      try {
+        const data = await handler(args);
+        return { data, error: null };
+      } catch (e) {
+        return { data: null, error: { message: e.message } };
+      }
+    },
     auth: {
       getSession: async () => ({ data: { session: state.session } }),
       onAuthStateChange: (cb) => {

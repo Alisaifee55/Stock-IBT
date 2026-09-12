@@ -28,6 +28,39 @@ export function useShops() {
 
 export const COUNTRIES = ['UAE', 'KUWAIT', 'OMAN'];
 
+/** Per-country status: last update date, rows in that upload, unique models currently live. */
+export function useCountryStatus(refreshToken) {
+  const [status, setStatus] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      const results = await Promise.all(
+        COUNTRIES.map(async (country) => {
+          const { data: upload } = await supabase
+            .from('stock_uploads')
+            .select('uploaded_at, row_count, source_filename')
+            .eq('country', country)
+            .eq('status', 'completed')
+            .order('uploaded_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const { count: modelCount } = await supabase
+            .from('stock_summary')
+            .select('*', { count: 'exact', head: true })
+            .eq('shop_country', country);
+          return [country, { upload, modelCount: modelCount ?? 0 }];
+        })
+      );
+      if (!cancelled) setStatus(Object.fromEntries(results));
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshToken]);
+  return status;
+}
+
 export const EMPTY_FILTERS = {
   shopIds: new Set(),
   categories: new Set(),
@@ -65,7 +98,7 @@ function applyCommonFilters(query, filters, { skipShop, skipCategory, skipBrand,
 }
 
 /** Paginated (infinite-scroll style) live report rows. */
-export function useStockSummary(filters, sort) {
+export function useStockSummary(filters, sort, modelJump) {
   const [rows, setRows] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -84,9 +117,10 @@ export function useStockSummary(filters, sort) {
         daysSinceLastSaleMin: filters.daysSinceLastSaleMin,
         daysSinceLastSaleMax: filters.daysSinceLastSaleMax,
         modelSearch: filters.modelSearch,
+        modelJump,
         sort,
       }),
-    [filters, sort]
+    [filters, sort, modelJump]
   );
 
   // Reset to page 0 whenever filters/sort change.
@@ -102,7 +136,13 @@ export function useStockSummary(filters, sort) {
     setError('');
 
     let query = supabase.from('stock_summary').select('*', { count: 'exact' });
-    query = applyCommonFilters(query, filters);
+    if (modelJump) {
+      // Bypasses every other filter — shows exactly this model's row(s),
+      // regardless of shop/category/country/zero-stock selections.
+      query = query.eq('model_no', modelJump);
+    } else {
+      query = applyCommonFilters(query, filters);
+    }
     query = query.order(sort.key, { ascending: sort.dir === 'asc', nullsFirst: false });
     query = query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 

@@ -3,6 +3,7 @@ import { readXlsxStreaming } from '../lib/xlsxStreamReader';
 import { supabase } from '../lib/supabaseClient';
 import { COUNTRIES } from '../lib/stockQueries';
 import { UploadIcon } from './icons';
+import logo from '../assets/sara-logo.png';
 
 const INSERT_BATCH_SIZE = 500; // Supabase insert batch size (smaller than the
 // parser's read batch size, which just controls how often we yield rows)
@@ -61,17 +62,20 @@ function mapRow(r, uploadId, shopByCode) {
 
 export default function AdminUpload({ onUploaded }) {
   const [country, setCountry] = useState('UAE');
+  const [deleteOldData, setDeleteOldData] = useState(false);
   const [fileName, setFileName] = useState('');
-  const [status, setStatus] = useState('idle'); // idle | reading | uploading | done | error
+  const [status, setStatus] = useState('idle'); // idle | reading | uploading | refreshing | cleaning | done | error
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState('');
   const [skippedRows, setSkippedRows] = useState(0);
+  const [deletedOldCount, setDeletedOldCount] = useState(null);
 
   const handleFile = useCallback(
     async (file) => {
       setFileName(file.name);
       setError('');
       setSkippedRows(0);
+      setDeletedOldCount(null);
       setStatus('reading');
       setProgress({ done: 0, total: 0 });
 
@@ -149,6 +153,16 @@ export default function AdminUpload({ onUploaded }) {
         const { error: refreshErr } = await supabase.rpc('refresh_stock_summary');
         if (refreshErr) throw refreshErr;
 
+        if (deleteOldData) {
+          setStatus('cleaning');
+          const { data: deletedCount, error: deleteErr } = await supabase.rpc('admin_delete_old_uploads', {
+            p_country: country,
+            p_keep_upload_id: uploadRow.id,
+          });
+          if (deleteErr) throw deleteErr;
+          setDeletedOldCount(deletedCount ?? 0);
+        }
+
         setProgress({ done: totalMapped, total: totalRead });
         setStatus('done');
         onUploaded?.();
@@ -157,7 +171,7 @@ export default function AdminUpload({ onUploaded }) {
         setStatus('error');
       }
     },
-    [onUploaded, country]
+    [onUploaded, country, deleteOldData]
   );
 
   return (
@@ -173,6 +187,16 @@ export default function AdminUpload({ onUploaded }) {
           ))}
         </select>
       </label>
+      <label className="delete-old-toggle">
+        <input
+          type="checkbox"
+          checked={deleteOldData}
+          onChange={(e) => setDeleteOldData(e.target.checked)}
+          disabled={status === 'uploading' || status === 'refreshing' || status === 'cleaning'}
+        />
+        Delete old {country} data after this upload completes
+        <span className="zero-stock-hint">(permanent — old history for {country} won't be kept)</span>
+      </label>
       {status === 'idle' || status === 'error' ? (
         <label className="upload-drop">
           <UploadIcon />
@@ -185,6 +209,13 @@ export default function AdminUpload({ onUploaded }) {
         </label>
       ) : (
         <div className="upload-status">
+          {(status === 'reading' || status === 'uploading' || status === 'refreshing' || status === 'cleaning') && (
+            <div className="upload-logo-stage">
+              <div className="upload-logo-ring">
+                <img src={logo} alt="" className="upload-logo-img" />
+              </div>
+            </div>
+          )}
           <div>
             {fileName} — {country}
           </div>
@@ -202,10 +233,14 @@ export default function AdminUpload({ onUploaded }) {
             </div>
           )}
           {status === 'refreshing' && <div>Refreshing report…</div>}
+          {status === 'cleaning' && <div>Deleting old {country} data…</div>}
           {status === 'done' && (
             <div className="upload-done">
               Done — {progress.done.toLocaleString()} rows uploaded for {country}
               {skippedRows > 0 && ` (${skippedRows} rows skipped: unrecognized shop code)`}
+              {deletedOldCount !== null && (
+                <div>{deletedOldCount} old {country} upload(s) deleted.</div>
+              )}
             </div>
           )}
         </div>

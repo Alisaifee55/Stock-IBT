@@ -46,10 +46,10 @@ function DetailRows({ modelNo, shopId }) {
   );
 }
 
-export default function ReportLive({ filters }) {
+export default function ReportLive({ filters, modelJump }) {
   const [sort, setSort] = useState({ key: 'sales_velocity', dir: 'desc' });
   const [expanded, setExpanded] = useState(new Set());
-  const { rows, totalCount, loading, error, loadMore, hasMore } = useStockSummary(filters, sort);
+  const { rows, totalCount, loading, error, loadMore, hasMore } = useStockSummary(filters, sort, modelJump);
   const scrollRef = useRef(null);
 
   const handleSort = (key) => {
