@@ -8,6 +8,8 @@
 //  - Report and country cards reload automatically once a refresh lands.
 //  - Escape no longer wipes filters while you're typing in a form field
 //    (previously Escape in the Manage Shops password box cleared filters).
+//  - Admin-only Storage usage panel: per-country size plus an on-demand
+//    "Delete old data" button, replacing the upload checkbox.
 // =============================================================
 
 import { useCallback, useEffect, useState } from 'react';
@@ -23,6 +25,7 @@ import AdminUpload from './components/AdminUpload';
 import ManageShops from './components/ManageShops';
 import ChangePassword from './components/ChangePassword';
 import CountryStatusCards from './components/CountryStatusCards';
+import StorageOverview from './components/StorageOverview';
 import ModelSearchLive, { MODEL_SEARCH_INPUT_ID } from './components/ModelSearchLive';
 import { ResetIcon } from './components/icons';
 
@@ -174,6 +177,7 @@ export default function App() {
               refreshShops();
             }}
           />
+          <StorageOverview refreshToken={refreshToken} onChanged={bumpData} />
           <ManageShops shopsList={shopsList} onChanged={refreshShops} />
         </>
       )}

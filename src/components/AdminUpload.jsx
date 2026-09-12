@@ -1,6 +1,11 @@
 // =============================================================
 // AdminUpload.jsx — v2.0 — 12-09-2026
 // Changes from v1.0:
+//  - Slimmer schema: 11 unused columns dropped from stock_items.
+//  - Rows with no stock, no sales and no purchases are skipped entirely
+//    (~20% of a UAE file) instead of being stored and never shown.
+//  - The "delete old data" checkbox is gone; cleanup is now an
+//    on-demand button per country in StorageOverview.
 //  - Report refresh now goes through the async job queue
 //    (request_summary_refresh + poll) instead of the synchronous RPC
 //    that always died on the authenticated role's 8s statement timeout.
@@ -27,28 +32,22 @@ const INSERT_BATCH_SIZE = 500; // Supabase insert batch size (smaller than the
 const COLUMN_MAP = {
   ModelNo: 'model_no',
   Brand: 'brand',
-  CostPrice: 'cost_price',
   SalesPrice: 'sales_price',
   Category: 'category',
-  YearDetail: 'year_detail',
-  Type: 'type',
-  Fabric: 'fabric',
   Color: 'color',
   Size: 'size',
   ClosingStock: 'closing_stock',
-  SalesPeriod: 'sales_period',
-  PurchasePeriod: 'purchase_period',
   TotalSales: 'total_sales',
   TotalPurchase: 'total_purchase',
-  StockInPeriod: 'stock_in_period',
-  StockOutPeriod: 'stock_out_period',
-  TillDateStockIn: 'till_date_stock_in',
-  FirstPurchaseDate: 'first_purchase_date',
   LastPurchaseDate: 'last_purchase_date',
-  FirstSalesDate: 'first_sales_date',
   LastSalesDate: 'last_sales_date',
 };
-const DATE_FIELDS = new Set(['first_purchase_date', 'last_purchase_date', 'first_sales_date', 'last_sales_date']);
+const DATE_FIELDS = new Set(['last_purchase_date', 'last_sales_date']);
+
+const num = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 // Source export uses M/D/YY — verified across all 303,627 rows of
 // ClosingStockDetailReport (22).xlsx: the first component never exceeds
@@ -71,6 +70,14 @@ function parseDateToIso(v) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+// Rows carrying no stock, no sales and no purchases are pure dead weight:
+// the report never shows them (zero-stock is hidden by default, and with
+// no sales history they can't appear in velocity or never-sold views
+// either). Measured at ~60,000 rows per UAE file.
+export function isDeadRow(r) {
+  return num(r.ClosingStock) === 0 && num(r.TotalSales) === 0 && num(r.TotalPurchase) === 0;
+}
+
 function mapRow(r, uploadId, shopByCode) {
   // Trim/upper the code: an untrimmed " TO" silently fell through to the
   // skipped pile before.
@@ -88,17 +95,16 @@ function mapRow(r, uploadId, shopByCode) {
   return out;
 }
 
-const BUSY = new Set(['reading', 'uploading', 'refreshing', 'cleaning']);
+const BUSY = new Set(['reading', 'uploading', 'refreshing']);
 
 export default function AdminUpload({ onUploaded }) {
   const [country, setCountry] = useState('UAE');
-  const [deleteOldData, setDeleteOldData] = useState(false);
   const [fileName, setFileName] = useState('');
-  const [status, setStatus] = useState('idle'); // idle | reading | uploading | refreshing | cleaning | done | error
+  const [status, setStatus] = useState('idle'); // idle | reading | uploading | refreshing | done | error
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState('');
   const [skippedRows, setSkippedRows] = useState(0);
-  const [deletedOldCount, setDeletedOldCount] = useState(null);
+  const [deadRows, setDeadRows] = useState(0);
   const [refreshElapsed, setRefreshElapsed] = useState(0);
   const [refreshMs, setRefreshMs] = useState(null);
   const unmountedRef = useRef(false);
@@ -126,7 +132,7 @@ export default function AdminUpload({ onUploaded }) {
       setFileName(file.name);
       setError('');
       setSkippedRows(0);
-      setDeletedOldCount(null);
+      setDeadRows(0);
       setRefreshElapsed(0);
       setRefreshMs(null);
       setStatus('reading');
@@ -160,6 +166,7 @@ export default function AdminUpload({ onUploaded }) {
         setStatus('uploading');
 
         let skipped = 0;
+        let dead = 0;
         let insertBuffer = [];
         let totalMapped = 0;
 
@@ -184,6 +191,10 @@ export default function AdminUpload({ onUploaded }) {
           onProgress: (n) => setProgress((p) => ({ ...p, total: n })),
           onBatch: async (rawBatch) => {
             for (const r of rawBatch) {
+              if (isDeadRow(r)) {
+                dead += 1;
+                continue;
+              }
               const mapped = mapRow(r, uploadRow.id, shopByCode);
               if (!mapped) {
                 skipped += 1;
@@ -198,10 +209,11 @@ export default function AdminUpload({ onUploaded }) {
         });
         await flushInsertBuffer();
         setSkippedRows(skipped);
+        setDeadRows(dead);
 
         if (totalMapped === 0) {
           throw new Error(
-            `No rows matched any ${country} shop code (out of ${totalRead} rows read). Double-check you selected the right country, and that ${country} shops have been created (Manage Shops).`
+            `No rows were stored out of ${totalRead} read — ${dead.toLocaleString()} had no stock/sales/purchases and ${skipped.toLocaleString()} had an unrecognized shop code. Check you picked the right country, and that its shops exist (Manage Shops).`
           );
         }
 
@@ -222,17 +234,6 @@ export default function AdminUpload({ onUploaded }) {
         });
         if (!res?.cancelled) setRefreshMs(res.durationMs ?? null);
 
-        if (deleteOldData) {
-          setStatus('cleaning');
-          const { data: deletedCount, error: deleteErr } = await withTimeout(
-            supabase.rpc('admin_delete_old_uploads', { p_country: country, p_keep_upload_id: uploadRow.id }),
-            60000,
-            `Deleting old ${country} data`
-          );
-          if (deleteErr) throw deleteErr;
-          setDeletedOldCount(deletedCount ?? 0);
-        }
-
         setProgress({ done: totalMapped, total: totalRead });
         setStatus('done');
         onUploaded?.();
@@ -241,7 +242,7 @@ export default function AdminUpload({ onUploaded }) {
         setStatus('error');
       }
     },
-    [onUploaded, country, deleteOldData]
+    [onUploaded, country]
   );
 
   return (
@@ -256,16 +257,6 @@ export default function AdminUpload({ onUploaded }) {
             </option>
           ))}
         </select>
-      </label>
-      <label className="delete-old-toggle">
-        <input
-          type="checkbox"
-          checked={deleteOldData}
-          onChange={(e) => setDeleteOldData(e.target.checked)}
-          disabled={busy}
-        />
-        Delete old {country} data after this upload completes
-        <span className="zero-stock-hint">(permanent — old history for {country} won't be kept)</span>
       </label>
       {status === 'idle' || status === 'error' ? (
         <label className="upload-drop">
@@ -312,11 +303,16 @@ export default function AdminUpload({ onUploaded }) {
               )}
             </div>
           )}
-          {status === 'cleaning' && <div>Deleting old {country} data…</div>}
           {status === 'done' && (
             <div className="upload-done">
               Done — {progress.done.toLocaleString()} rows stored for {country}
               {progress.total ? ` (${progress.total.toLocaleString()} read from file)` : ''}
+              {deadRows > 0 && (
+                <div className="upload-refresh-note">
+                  {deadRows.toLocaleString()} rows skipped — no stock, no sales and no purchases, so nothing to report
+                  on.
+                </div>
+              )}
               {skippedRows > 0 && (
                 <div className="upload-skipped">
                   {skippedRows.toLocaleString()} rows skipped — their shop code doesn't exist in {country}. Add the
@@ -324,11 +320,6 @@ export default function AdminUpload({ onUploaded }) {
                 </div>
               )}
               {refreshMs !== null && <div>Report refreshed in {(refreshMs / 1000).toFixed(1)}s.</div>}
-              {deletedOldCount !== null && (
-                <div>
-                  {deletedOldCount} old {country} upload(s) deleted.
-                </div>
-              )}
             </div>
           )}
         </div>

@@ -1,11 +1,15 @@
 // =============================================================
-// summaryRefresh.js — v1.0 — 12-09-2026
+// summaryRefresh.js — v2.0 — 12-09-2026
 // Client for the async stock_summary refresh (migration 18/18a).
 //
 // The old path called rpc('refresh_stock_summary') synchronously and
 // always failed at scale: SET LOCAL statement_timeout cannot re-arm the
 // timer for an already-running statement, so the real ceiling was the
 // authenticated role's 8s — against a refresh measured at 8.24s.
+//
+// v2.0 also routes the "delete old data" cleanup through the same
+// queue: cascade-deleting ~300k rows takes far longer than 8s, so the
+// old direct RPC call could never succeed either.
 //
 // Now: request_summary_refresh() enqueues and returns instantly, a
 // pg_cron worker (every 15s, running as postgres with no timeout) does
@@ -65,16 +69,16 @@ export async function fetchLastRefresh() {
  * isCancelled() lets a caller abandon the wait (e.g. unmount).
  * Resolves { durationMs, finishedAt }; throws with a user-facing message.
  */
-export async function runRefreshAndWait({ onElapsed, isCancelled } = {}) {
+async function enqueueAndWait({ rpcName, rpcArgs, label, onElapsed, isCancelled }) {
   const startedAt = Date.now();
 
   const { data: jobId, error: rpcErr } = await withTimeout(
-    supabase.rpc('request_summary_refresh'),
+    supabase.rpc(rpcName, rpcArgs),
     CALL_TIMEOUT_MS,
-    'Requesting report refresh'
+    `Requesting ${label}`
   );
   if (rpcErr) throw new Error(rpcErr.message);
-  if (!jobId) throw new Error('The server did not return a refresh job id.');
+  if (!jobId) throw new Error(`The server did not return a job id for the ${label}.`);
 
   for (;;) {
     if (isCancelled?.()) return { cancelled: true };
@@ -84,7 +88,7 @@ export async function runRefreshAndWait({ onElapsed, isCancelled } = {}) {
 
     if (waited > MAX_WAIT_MS) {
       throw new Error(
-        'The report refresh is taking longer than 5 minutes. It may still finish in the background — reload the page in a few minutes to check.'
+        `The ${label} is taking longer than 5 minutes. It may still finish in the background — reload the page in a few minutes to check.`
       );
     }
 
@@ -110,10 +114,40 @@ export async function runRefreshAndWait({ onElapsed, isCancelled } = {}) {
       return { durationMs: job.duration_ms, finishedAt: job.finished_at };
     }
     if (job.status === 'error') {
-      throw new Error(job.error_message || 'The report refresh failed on the server.');
+      throw new Error(job.error_message || `The ${label} failed on the server.`);
     }
     // 'pending' (waiting for the 15s cron tick) or 'running' — keep waiting.
   }
+}
+
+/**
+ * Queues a stock_summary refresh and waits for the worker to finish it.
+ * onElapsed(ms) fires about once a second for loader copy.
+ * isCancelled() lets a caller abandon the wait (e.g. unmount).
+ * Resolves { durationMs, finishedAt }; throws with a user-facing message.
+ */
+export function runRefreshAndWait({ onElapsed, isCancelled } = {}) {
+  return enqueueAndWait({
+    rpcName: 'request_summary_refresh',
+    label: 'report refresh',
+    onElapsed,
+    isCancelled,
+  });
+}
+
+/**
+ * Queues deletion of every older snapshot for one country, keeping the
+ * upload just completed, and waits for it. The superseded rows aren't on
+ * the report anyway, so no follow-up refresh is needed.
+ */
+export function runCleanupAndWait({ country, keepUploadId, onElapsed, isCancelled } = {}) {
+  return enqueueAndWait({
+    rpcName: 'request_old_data_cleanup',
+    rpcArgs: { p_country: country, p_keep_upload_id: keepUploadId },
+    label: `old ${country} data cleanup`,
+    onElapsed,
+    isCancelled,
+  });
 }
 
 /**
