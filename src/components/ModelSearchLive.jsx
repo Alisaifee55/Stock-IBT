@@ -1,5 +1,19 @@
+// =============================================================
+// ModelSearchLive.jsx — v2.0 — 12-09-2026
+// Changes from v1.0:
+//  - Searches via the search_models() RPC, which does DISTINCT + ORDER
+//    in Postgres against the trigram index. v1.0 pulled an unordered
+//    .limit(500) and deduped client-side, so a common substring
+//    returned an arbitrary slice of matches.
+//  - Prefix matches now rank first.
+//  - A request-id guard stops a slow earlier response overwriting a
+//    newer one.
+//  - Search text is sanitised before it reaches the query.
+// =============================================================
+
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { sanitizeSearch } from '../lib/stockQueries';
 import { SearchIcon } from './icons';
 
 const MAX_RESULTS = 10;
@@ -11,26 +25,30 @@ export default function ModelSearchLive({ onSelect }) {
   const [results, setResults] = useState([]);
   const [highlighted, setHighlighted] = useState(0);
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    if (!query.trim()) {
+    const term = sanitizeSearch(query);
+    if (!term) {
       setResults([]);
+      setSearching(false);
       return;
     }
     clearTimeout(debounceRef.current);
+    setSearching(true);
     debounceRef.current = setTimeout(async () => {
-      const { data } = await supabase
-        .from('stock_summary')
-        .select('model_no, category')
-        .ilike('model_no', `%${query.trim()}%`)
-        .limit(500); // then dedupe client-side; a model can appear once per shop
-      const seen = new Map();
-      for (const r of data || []) {
-        if (!seen.has(r.model_no)) seen.set(r.model_no, r.category);
-      }
-      setResults(Array.from(seen.entries()).slice(0, MAX_RESULTS));
+      const reqId = ++requestIdRef.current;
+      const { data, error } = await supabase.rpc('search_models', {
+        p_query: term,
+        p_limit: MAX_RESULTS,
+      });
+      // Ignore anything but the newest request.
+      if (reqId !== requestIdRef.current) return;
+      setSearching(false);
+      setResults(error ? [] : data || []);
       setHighlighted(0);
     }, DEBOUNCE_MS);
     return () => clearTimeout(debounceRef.current);
@@ -56,11 +74,13 @@ export default function ModelSearchLive({ onSelect }) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const pick = results[highlighted] ?? results[0];
-      commitSelection(pick?.[0]);
+      commitSelection(pick?.model_no);
     } else if (e.key === 'Escape') {
       setOpen(false);
     }
   };
+
+  const term = sanitizeSearch(query);
 
   return (
     <div className="model-search">
@@ -83,22 +103,22 @@ export default function ModelSearchLive({ onSelect }) {
       </div>
       {open && results.length > 0 && (
         <div className="model-search-results">
-          {results.map(([modelNo, category], i) => (
+          {results.map((r, i) => (
             <div
-              key={modelNo}
+              key={r.model_no}
               className={`model-search-result${i === highlighted ? ' highlighted' : ''}`}
-              onMouseDown={() => commitSelection(modelNo)}
+              onMouseDown={() => commitSelection(r.model_no)}
               onMouseEnter={() => setHighlighted(i)}
             >
-              <span className="model-search-result-model">{modelNo}</span>
-              {category && <span className="model-search-result-category">{category}</span>}
+              <span className="model-search-result-model">{r.model_no}</span>
+              {r.category && <span className="model-search-result-category">{r.category}</span>}
             </div>
           ))}
         </div>
       )}
-      {open && query.trim() && results.length === 0 && (
+      {open && term && results.length === 0 && (
         <div className="model-search-results">
-          <div className="model-search-empty">No matching model numbers</div>
+          <div className="model-search-empty">{searching ? 'Searching…' : 'No matching model numbers'}</div>
         </div>
       )}
     </div>

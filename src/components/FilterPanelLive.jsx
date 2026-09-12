@@ -1,3 +1,10 @@
+// =============================================================
+// FilterPanelLive.jsx — v2.0 — 12-09-2026
+// Changes from v1.0: consumes the new server-side option lists (one
+// RPC, real SELECT DISTINCT) and surfaces an error if they fail to
+// load, instead of silently showing empty dropdowns.
+// =============================================================
+
 import { useMemo, useState } from 'react';
 import { useFilterOptions, COUNTRIES } from '../lib/stockQueries';
 import { FilterIcon, SearchIcon } from './icons';
@@ -53,7 +60,7 @@ function MultiCheck({ label, options, selected, onChange }) {
 }
 
 export default function FilterPanelLive({ filters, setFilters, onClear }) {
-  const options = useFilterOptions(filters);
+  const { shops, categories, brands, error: optionsError } = useFilterOptions(filters);
   const [resetToken, setResetToken] = useState(0);
 
   const handleClear = () => {
@@ -108,25 +115,26 @@ export default function FilterPanelLive({ filters, setFilters, onClear }) {
           <span className="zero-stock-hint">(no sale date)</span>
         </label>
       </div>
+      {optionsError && <div className="error-box small">Couldn't load filter options: {optionsError}</div>}
       <div className="filter-grid">
         <MultiCheck
           key={`shop-${resetToken}`}
           label="Shop"
-          options={options.shops.map((s) => ({ value: s.id, label: s.code }))}
+          options={shops.map((s) => ({ value: s.id, label: s.code }))}
           selected={filters.shopIds}
           onChange={(v) => setFilters((f) => ({ ...f, shopIds: v }))}
         />
         <MultiCheck
           key={`category-${resetToken}`}
           label="Category"
-          options={options.categories.map((c) => ({ value: c, label: c }))}
+          options={categories.map((c) => ({ value: c, label: c }))}
           selected={filters.categories}
           onChange={(v) => setFilters((f) => ({ ...f, categories: v }))}
         />
         <MultiCheck
           key={`brand-${resetToken}`}
           label="Brand"
-          options={options.brands.map((b) => ({ value: b, label: b }))}
+          options={brands.map((b) => ({ value: b, label: b }))}
           selected={filters.brands}
           onChange={(v) => setFilters((f) => ({ ...f, brands: v }))}
         />

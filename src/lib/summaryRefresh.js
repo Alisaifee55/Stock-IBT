@@ -176,6 +176,16 @@ export function useSummaryRefresh({ onComplete } = {}) {
     };
   }, []);
 
+  // Lets the app refresh the pill's timestamp after an upload did the
+  // refresh itself — otherwise the header stayed stale until reload.
+  const reload = useCallback(() => {
+    fetchLastRefresh()
+      .then((row) => {
+        if (row?.finished_at) setLastRefreshAt(row.finished_at);
+      })
+      .catch(() => {});
+  }, []);
+
   const start = useCallback(async () => {
     if (runningRef.current) return; // guard double-clicks
     runningRef.current = true;
@@ -204,5 +214,5 @@ export function useSummaryRefresh({ onComplete } = {}) {
     setState('idle');
   }, []);
 
-  return { lastRefreshAt, state, elapsed, error, start, dismissError };
+  return { lastRefreshAt, state, elapsed, error, start, reload, dismissError };
 }

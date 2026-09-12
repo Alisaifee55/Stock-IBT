@@ -1,5 +1,17 @@
+// =============================================================
+// ReportLive.jsx — v2.0 — 12-09-2026
+// Changes from v1.0:
+//  - DetailRows emitted 11 cells against a 13-column header, so every
+//    Color/Size breakdown showed closing stock under "Country", total
+//    sales under "SP" and total purchase under "Closing Stock". Now
+//    aligned, with the three numbers under their real headings.
+//  - Breakdown query failures no longer render as "no breakdown found".
+//  - Empty state instead of a blank table.
+//  - Last Sale renders as DD-MM-YYYY, not raw ISO.
+// =============================================================
+
 import { Fragment, useRef, useState } from 'react';
-import { useStockSummary, useStockDetail } from '../lib/stockQueries';
+import { useStockSummary, useStockDetail, formatIsoDate } from '../lib/stockQueries';
 import { SortIcon } from './icons';
 
 const COLS = [
@@ -16,30 +28,56 @@ const COLS = [
   { key: 'days_old', label: 'Days Old', sortable: true },
   { key: 'sales_velocity', label: 'Velocity (units/day)', sortable: true },
 ];
+// One leading cell for the expand caret, then one per column above.
+const TOTAL_CELLS = COLS.length + 1;
 
 function DetailRows({ modelNo, shopId }) {
-  const { detail, loading } = useStockDetail(modelNo, shopId, true);
-  if (loading) return (
-    <tr className="detail-row"><td colSpan={COLS.length + 1}>Loading breakdown…</td></tr>
-  );
+  const { detail, loading, error } = useStockDetail(modelNo, shopId, true);
+
+  if (loading) {
+    return (
+      <tr className="detail-row">
+        <td colSpan={TOTAL_CELLS}>Loading breakdown…</td>
+      </tr>
+    );
+  }
+  if (error) {
+    return (
+      <tr className="detail-row">
+        <td colSpan={TOTAL_CELLS} className="detail-error">
+          Couldn't load the breakdown: {error}
+        </td>
+      </tr>
+    );
+  }
   if (!detail || detail.length === 0) {
     return (
-      <tr className="detail-row"><td colSpan={COLS.length + 1}>No Color/Size breakdown found.</td></tr>
+      <tr className="detail-row">
+        <td colSpan={TOTAL_CELLS}>No Color/Size breakdown found.</td>
+      </tr>
     );
   }
   return (
     <>
       {detail.map((d, i) => (
-        <tr className="detail-row" key={i}>
-          <td></td>
+        <tr className="detail-row" key={`${d.color || ''}|${d.size || ''}|${i}`}>
+          {/* caret column */}
+          <td />
+          {/* spans Model No + Category */}
           <td colSpan={2} className="detail-label">
             {d.color || '—'} / {d.size || '—'}
           </td>
-          <td></td>
+          {/* Shop */}
+          <td />
+          {/* Country */}
+          <td />
+          {/* SP */}
+          <td />
           <td>{d.closing_stock}</td>
           <td>{d.total_sales}</td>
           <td>{d.total_purchase}</td>
-          <td colSpan={4}></td>
+          {/* Last Sale, Sale Days, Days Old, Velocity */}
+          <td colSpan={4} />
         </tr>
       ))}
     </>
@@ -58,7 +96,7 @@ export default function ReportLive({ filters, modelJump }) {
 
   const handleScroll = () => {
     const el = scrollRef.current;
-    if (!el || loading || !hasMore) return;
+    if (!el || !hasMore) return;
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) loadMore();
   };
 
@@ -71,6 +109,8 @@ export default function ReportLive({ filters, modelJump }) {
     });
   };
 
+  const isEmpty = !loading && !error && rows.length === 0;
+
   return (
     <div className="panel">
       <h3>
@@ -82,7 +122,7 @@ export default function ReportLive({ filters, modelJump }) {
         <table>
           <thead>
             <tr>
-              <th></th>
+              <th />
               {COLS.map((c) => (
                 <th
                   key={c.key}
@@ -114,10 +154,10 @@ export default function ReportLive({ filters, modelJump }) {
                     <td>{r.closing_stock}</td>
                     <td>{r.total_sales}</td>
                     <td>{r.total_purchase}</td>
-                    <td>{r.last_sales_date || ''}</td>
+                    <td>{formatIsoDate(r.last_sales_date)}</td>
                     <td>{r.days_since_last_sale ?? ''}</td>
-                    <td>{r.days_old}</td>
-                    <td className="velocity">{r.sales_velocity}</td>
+                    <td>{r.days_old ?? ''}</td>
+                    <td className="velocity">{r.sales_velocity ?? ''}</td>
                   </tr>
                   {isOpen && <DetailRows modelNo={r.model_no} shopId={r.shop_id} />}
                 </Fragment>
@@ -125,6 +165,14 @@ export default function ReportLive({ filters, modelJump }) {
             })}
           </tbody>
         </table>
+        {isEmpty && (
+          <div className="table-empty">
+            <div className="table-empty-title">No models match these filters</div>
+            <div className="table-empty-hint">
+              Try clearing a filter, or tick "Show models with zero closing stock". Press Esc to clear everything.
+            </div>
+          </div>
+        )}
         {loading && <div className="table-load-more">Loading…</div>}
         {!loading && hasMore && (
           <div className="table-load-more">

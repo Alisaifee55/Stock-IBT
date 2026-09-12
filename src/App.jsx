@@ -45,6 +45,7 @@ export default function App() {
     elapsed: refreshElapsed,
     error: refreshError,
     start: startRefresh,
+    reload: reloadRefreshStamp,
     dismissError: dismissRefreshError,
   } = useSummaryRefresh({ onComplete: bumpData });
 
@@ -175,6 +176,7 @@ export default function App() {
             onUploaded={() => {
               bumpData();
               refreshShops();
+              reloadRefreshStamp();
             }}
           />
           <StorageOverview refreshToken={refreshToken} onChanged={bumpData} />

@@ -2,8 +2,8 @@
    App.css — v2.0 — 12-09-2026
    Changes from v1.0: header refresh pill + spinner, refresh failure
    banner, upload skipped-rows / slow-refresh notes, the admin storage
-   panel with its confirm modal, and a small responsive block so the
-   header stops overflowing on phones.
+   panel with its confirm modal, the report empty state, and a small
+   responsive block so the header stops overflowing on phones.
    ============================================================= */
 
 .wrap { max-width: 1200px; margin: 0 auto; padding: 40px 24px 80px; }
@@ -375,3 +375,12 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
   .modal-actions { flex-direction: column-reverse; }
   .modal-actions .btn, .modal-actions .btn-danger { width: 100%; }
 }
+
+
+/* ===== v2.0 — Report empty state + detail errors ===== */
+.table-empty { padding: 44px 22px; text-align: center; }
+.table-empty-title { font-size: 15px; font-weight: 700; color: var(--teal-dark); margin-bottom: 6px; }
+.table-empty-hint { font-size: 13px; color: var(--muted); max-width: 420px; margin: 0 auto; line-height: 1.5; }
+.detail-row .detail-error { color: #a13f33; }
+.country-card-stat.sub-stat .value { font-size: 15px; color: var(--muted); }
+.country-card-stat.sub-stat .label { color: var(--muted); }
