@@ -8,11 +8,14 @@
 //  - Breakdown query failures no longer render as "no breakdown found".
 //  - Empty state instead of a blank table.
 //  - Last Sale renders as DD-MM-YYYY, not raw ISO.
+//  - Clicking the Model No opens the photo + breakdown modal; the
+//    caret still expands the inline breakdown.
 // =============================================================
 
 import { Fragment, useRef, useState } from 'react';
 import { useStockSummary, useStockDetail, formatIsoDate } from '../lib/stockQueries';
 import { SortIcon } from './icons';
+import ModelDetailModal from './ModelDetailModal';
 
 const COLS = [
   { key: 'model_no', label: 'Model No', sortable: false },
@@ -87,6 +90,7 @@ function DetailRows({ modelNo, shopId }) {
 export default function ReportLive({ filters, modelJump }) {
   const [sort, setSort] = useState({ key: 'sales_velocity', dir: 'desc' });
   const [expanded, setExpanded] = useState(new Set());
+  const [openModel, setOpenModel] = useState(null);
   const { rows, totalCount, loading, error, loadMore, hasMore } = useStockSummary(filters, sort, modelJump);
   const scrollRef = useRef(null);
 
@@ -144,7 +148,28 @@ export default function ReportLive({ filters, modelJump }) {
                 <Fragment key={key}>
                   <tr onClick={() => toggleExpand(key)} className="expandable-row">
                     <td className="expand-toggle">{isOpen ? '▾' : '▸'}</td>
-                    <td className="model-cell">{r.model_no}</td>
+                    <td className="model-cell">
+                      <button
+                        type="button"
+                        className="model-link"
+                        title={`View photo and breakdown for ${r.model_no}`}
+                        onClick={(e) => {
+                          // Don't also toggle the inline expand.
+                          e.stopPropagation();
+                          setOpenModel({
+                            modelNo: r.model_no,
+                            shopId: r.shop_id,
+                            shopCode: r.shop_code,
+                            shopCountry: r.shop_country,
+                            category: r.category,
+                            salesPrice: r.sales_price,
+                            lastSalesDate: r.last_sales_date,
+                          });
+                        }}
+                      >
+                        {r.model_no}
+                      </button>
+                    </td>
                     <td className="shrink-cell" title={r.category}>
                       {r.category}
                     </td>
@@ -180,6 +205,7 @@ export default function ReportLive({ filters, modelJump }) {
           </div>
         )}
       </div>
+      {openModel && <ModelDetailModal model={openModel} onClose={() => setOpenModel(null)} />}
     </div>
   );
 }

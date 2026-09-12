@@ -14,6 +14,7 @@
 //  - Model search text is sanitised before going into an ilike filter.
 //  - useCountryStatus returns models tracked AND models in stock; the
 //    card previously labelled the former as the latter.
+//  - Adds useModelAcrossShops() for the model detail modal.
 // =============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -301,4 +302,38 @@ export function useStockDetail(modelNo, shopId, enabled) {
   }, [modelNo, shopId, enabled]);
 
   return { detail, loading, error };
+}
+
+
+/**
+ * Every OTHER shop currently holding this model, most stock first.
+ * Powers the "Also in stock at" row in the model detail modal, and is
+ * the natural starting point for an inter-branch transfer request.
+ */
+export function useModelAcrossShops(modelNo, excludeShopId) {
+  const [shops, setShops] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!modelNo) return;
+    let cancelled = false;
+    setLoading(true);
+    supabase
+      .from('stock_summary')
+      .select('shop_id, shop_code, shop_country, closing_stock')
+      .eq('model_no', modelNo)
+      .gt('closing_stock', 0)
+      .order('closing_stock', { ascending: false })
+      .limit(50)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setShops(error ? [] : (data || []).filter((r) => r.shop_id !== excludeShopId));
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modelNo, excludeShopId]);
+
+  return { shops, loading };
 }
