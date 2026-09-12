@@ -10,11 +10,20 @@
 //  - Last Sale renders as DD-MM-YYYY, not raw ISO.
 //  - Clicking the Model No opens the photo + breakdown modal; the
 //    caret still expands the inline breakdown.
+//  - CSV export of every row matching the current filters (not just
+//    the pages scrolled into view), with a live row counter.
 // =============================================================
 
-import { Fragment, useRef, useState } from 'react';
-import { useStockSummary, useStockDetail, formatIsoDate } from '../lib/stockQueries';
-import { SortIcon } from './icons';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import {
+  useStockSummary,
+  useStockDetail,
+  formatIsoDate,
+  fetchAllSummaryRows,
+  EXPORT_MAX_ROWS,
+} from '../lib/stockQueries';
+import { buildCsv, downloadCsv, timestampedFilename } from '../lib/exportCsv';
+import { SortIcon, DownloadIcon } from './icons';
 import ModelDetailModal from './ModelDetailModal';
 
 const COLS = [
@@ -33,6 +42,23 @@ const COLS = [
 ];
 // One leading cell for the expand caret, then one per column above.
 const TOTAL_CELLS = COLS.length + 1;
+
+// Export carries the same columns the user sees, in the same order,
+// with dates already formatted as DD-MM-YYYY.
+const EXPORT_COLS = [
+  { key: 'model_no', label: 'Model No' },
+  { key: 'category', label: 'Category' },
+  { key: 'shop_code', label: 'Shop' },
+  { key: 'shop_country', label: 'Country' },
+  { key: 'sales_price', label: 'Sales Price' },
+  { key: 'closing_stock', label: 'Closing Stock' },
+  { key: 'total_sales', label: 'Total Sales' },
+  { key: 'total_purchase', label: 'Total Purchase' },
+  { key: 'last_sales_date', label: 'Last Sale', format: (v) => formatIsoDate(v) },
+  { key: 'days_since_last_sale', label: 'Sale Days' },
+  { key: 'days_old', label: 'Days Old' },
+  { key: 'sales_velocity', label: 'Velocity (units/day)' },
+];
 
 function DetailRows({ modelNo, shopId }) {
   const { detail, loading, error } = useStockDetail(modelNo, shopId, true);
@@ -91,6 +117,46 @@ export default function ReportLive({ filters, modelJump }) {
   const [sort, setSort] = useState({ key: 'sales_velocity', dir: 'desc' });
   const [expanded, setExpanded] = useState(new Set());
   const [openModel, setOpenModel] = useState(null);
+  const [exportState, setExportState] = useState('idle'); // idle | working | error
+  const [exportCount, setExportCount] = useState(0);
+  const [exportError, setExportError] = useState('');
+  const [exportNote, setExportNote] = useState('');
+  const unmountedRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      unmountedRef.current = true;
+    },
+    []
+  );
+
+  const handleExport = async () => {
+    if (exportState === 'working') return;
+    setExportState('working');
+    setExportCount(0);
+    setExportError('');
+    setExportNote('');
+    try {
+      const { rows: allRows, truncated, cancelled } = await fetchAllSummaryRows(filters, sort, modelJump, {
+        onProgress: setExportCount,
+        isCancelled: () => unmountedRef.current,
+      });
+      if (cancelled) return;
+      if (allRows.length === 0) {
+        setExportError('Nothing to export with the current filters.');
+        setExportState('error');
+        return;
+      }
+      downloadCsv(buildCsv(allRows, EXPORT_COLS), timestampedFilename('sara-stock-report'));
+      if (truncated) {
+        setExportNote(`Capped at ${EXPORT_MAX_ROWS.toLocaleString()} rows — narrow the filters for the rest.`);
+      }
+      setExportState('idle');
+    } catch (err) {
+      setExportError(err.message || 'Export failed.');
+      setExportState('error');
+    }
+  };
   const { rows, totalCount, loading, error, loadMore, hasMore } = useStockSummary(filters, sort, modelJump);
   const scrollRef = useRef(null);
 
@@ -120,7 +186,28 @@ export default function ReportLive({ filters, modelJump }) {
       <h3>
         Report
         <span className="count-pill">{totalCount.toLocaleString()} models</span>
+        <button
+          type="button"
+          className="btn btn-reset export-btn"
+          onClick={handleExport}
+          disabled={exportState === 'working' || totalCount === 0}
+          title="Download every row matching the current filters as CSV"
+        >
+          {exportState === 'working' ? (
+            <>
+              <span className="refresh-spinner" aria-hidden="true" />
+              Preparing {exportCount.toLocaleString()} rows…
+            </>
+          ) : (
+            <>
+              <DownloadIcon />
+              Export CSV
+            </>
+          )}
+        </button>
       </h3>
+      {exportError && <div className="error-box small">{exportError}</div>}
+      {exportNote && <div className="export-note">{exportNote}</div>}
       {error && <div className="error-box">Error loading data: {error}</div>}
       <div className="table-scroll report-table-scroll" ref={scrollRef} onScroll={handleScroll}>
         <table>

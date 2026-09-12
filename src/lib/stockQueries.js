@@ -15,6 +15,8 @@
 //  - useCountryStatus returns models tracked AND models in stock; the
 //    card previously labelled the former as the latter.
 //  - Adds useModelAcrossShops() for the model detail modal.
+//  - Adds fetchAllSummaryRows() so CSV export covers every row matching
+//    the current filters, not just the pages scrolled into view.
 // =============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -336,4 +338,46 @@ export function useModelAcrossShops(modelNo, excludeShopId) {
   }, [modelNo, excludeShopId]);
 
   return { shops, loading };
+}
+
+
+export const EXPORT_PAGE_SIZE = 1000;
+export const EXPORT_MAX_ROWS = 50000; // guard: beyond this, the browser struggles
+
+/**
+ * Pages through every row matching the current filters, for CSV export.
+ * The report itself only holds the pages you've scrolled, so exporting
+ * `rows` would silently give you the first 100.
+ * Returns { rows, truncated }.
+ */
+export async function fetchAllSummaryRows(filters, sort, modelJump, { onProgress, isCancelled } = {}) {
+  const out = [];
+  let page = 0;
+  let truncated = false;
+
+  for (;;) {
+    if (isCancelled?.()) return { rows: out, truncated, cancelled: true };
+
+    let query = supabase.from('stock_summary').select('*');
+    if (modelJump) query = query.eq('model_no', modelJump);
+    else query = applyCommonFilters(query, filters);
+    query = query.order(sort.key, { ascending: sort.dir === 'asc', nullsFirst: false });
+    query = query.order('model_no', { ascending: true });
+    query = query.range(page * EXPORT_PAGE_SIZE, page * EXPORT_PAGE_SIZE + EXPORT_PAGE_SIZE - 1);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    out.push(...(data || []));
+    onProgress?.(out.length);
+
+    if (!data || data.length < EXPORT_PAGE_SIZE) break;
+    if (out.length >= EXPORT_MAX_ROWS) {
+      truncated = true;
+      break;
+    }
+    page += 1;
+  }
+
+  return { rows: out.slice(0, EXPORT_MAX_ROWS), truncated };
 }
