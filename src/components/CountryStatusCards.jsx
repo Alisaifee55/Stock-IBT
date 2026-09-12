@@ -1,17 +1,22 @@
 // =============================================================
-// CountryStatusCards.jsx — v2.0 — 12-09-2026
-// Changes from v1.0:
-//  - "Models (in stock)" counted every summary row for the country,
-//    including zero-stock models that still have sales history. Now
-//    shows both figures, each labelled for what it actually is.
-//  - Dates render as DD-MM-YYYY HH:MM instead of the browser's locale
-//    default (it was showing 9/12/2026 07:21 PM).
+// CountryStatusCards.jsx — v2.1 — 12-09-2026
+// Changes from v2.0:
+//  - Admin accounts now get an inline stock-upload drop-zone built
+//    directly into each country's card (replaces the old separate
+//    "Central stock upload" panel below the cards).
+//  - Accepts a `trailingCard` element so the caller can append one
+//    more card (Storage summary) to the same row without this
+//    component needing to know anything about storage.
+// Unchanged from v1.0/v2.0:
+//  - "Models (in stock)" vs "Models tracked" distinction.
+//  - Dates render as DD-MM-YYYY HH:MM, never the browser locale default.
 // =============================================================
 
 import { COUNTRIES, useCountryStatus } from '../lib/stockQueries';
 import { formatStamp } from '../lib/summaryRefresh';
+import CountryUploadZone from './CountryUploadZone';
 
-export default function CountryStatusCards({ refreshToken }) {
+export default function CountryStatusCards({ refreshToken, isAdmin, onUploaded, trailingCard }) {
   const status = useCountryStatus(refreshToken);
 
   return (
@@ -44,9 +49,11 @@ export default function CountryStatusCards({ refreshToken }) {
             ) : (
               <div className="country-card-empty">No data uploaded yet</div>
             )}
+            {isAdmin && <CountryUploadZone country={country} onUploaded={onUploaded} />}
           </div>
         );
       })}
+      {trailingCard}
     </div>
   );
 }

@@ -660,3 +660,42 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
   .bell-panel { width: calc(100vw - 32px); right: -8px; }
   .transfer-cancel-btn, .transfer-cancel-confirm { margin-right: 0; }
 }
+
+/* ===== v2.1 — inline per-country upload zone (in CountryStatusCards) ===== */
+.country-upload-zone { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.upload-drop-compact { padding: 10px 12px; border-radius: 12px; font-size: 12.5px; gap: 8px; }
+.upload-drop-compact svg { width: 18px; height: 18px; }
+.upload-status-compact { font-size: 12.5px; }
+.upload-status-file {
+  font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; margin-bottom: 4px;
+}
+.upload-status-line { color: var(--ink); }
+.upload-done-compact { font-size: 12.5px; }
+.upload-refresh-note-compact { font-size: 11px; margin-top: 3px; }
+.upload-skipped-compact { font-size: 11px; color: #a17a2f; margin-top: 3px; }
+.upload-again-link {
+  display: inline-block; margin-top: 6px; background: none; border: none; padding: 0;
+  color: var(--teal-dark); font-weight: 600; font-size: 11.5px; text-decoration: underline;
+  cursor: pointer;
+}
+.upload-again-link:hover { color: var(--teal); }
+
+/* ===== v2.1 — compact Storage summary card (in the top country-cards row) ===== */
+.storage-summary-card {
+  text-align: left; cursor: pointer; font: inherit; width: 100%;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.storage-summary-card:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(33, 90, 86, 0.14); }
+.storage-summary-card:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+.storage-summary-cta { font-size: 12px; font-weight: 700; color: var(--teal-dark); margin-top: 12px; }
+
+/* Storage panel content re-used inside the details modal (no double card chrome) */
+.storage-panel-embedded { padding: 0; }
+.storage-panel-embedded .storage-total { margin: 0 0 16px; }
+.storage-panel-embedded .error-box { margin: 12px 0; }
+.modal-card-wide { max-width: 780px; }
+.modal-body-wide { padding: 12px 20px 20px; }
+@media (max-width: 860px) {
+  .modal-card-wide { max-width: 100%; }
+}

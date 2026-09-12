@@ -27,7 +27,7 @@ function fmtSize(bytes) {
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 }
 
-export default function StorageOverview({ refreshToken, onChanged }) {
+export default function StorageOverview({ refreshToken, onChanged, embedded }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -118,7 +118,8 @@ export default function StorageOverview({ refreshToken, onChanged }) {
   const usedPct = Math.min(100, (dbBytes / FREE_TIER_BYTES) * 100);
 
   return (
-    <div className="panel storage-panel">
+    <div className={embedded ? 'storage-panel-embedded' : 'panel storage-panel'}>
+      {!embedded && (
       <h3>
         Storage usage (admin only)
         <button
@@ -132,6 +133,7 @@ export default function StorageOverview({ refreshToken, onChanged }) {
           <ResetIcon />
         </button>
       </h3>
+      )}
 
       <div className="storage-total">
         <div className="storage-total-head">

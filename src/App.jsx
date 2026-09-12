@@ -1,20 +1,20 @@
 // =============================================================
-// App.jsx — v2.0 — 12-09-2026
-// Changes from v1.0:
-//  - Header "Report updated DD-MM-YYYY HH:MM" pill, visible to everyone,
-//    with a refresh button for admins only. Queues the async refresh job
-//    and polls it; no modal, so the page stays usable while it runs.
-//  - Persistent non-blocking banner when a refresh fails.
-//  - Report and country cards reload automatically once a refresh lands.
-//  - Escape no longer wipes filters while you're typing in a form field
-//    (previously Escape in the Manage Shops password box cleared filters).
-//  - Admin-only Storage usage panel: per-country size plus an on-demand
-//    "Delete old data" button, replacing the upload checkbox.
-//  - Report / Transfers view switch, with a badge for transfer requests
-//    awaiting your response. Admin accounts get read-only oversight;
-//    only shop accounts can raise or decide a transfer.
-//  - Notification bell (realtime + 60s poll fallback); clicking a
-//    transfer notification opens that transfer directly.
+// App.jsx — v2.1 — 12-09-2026
+// Changes from v2.0:
+//  - Top row is now clean and single-purpose: country cards (each
+//    with its own inline upload zone for admins) plus a compact
+//    Storage-usage card at the end of the same row. The old
+//    standalone "Central stock upload" panel and full-width Storage
+//    panel are gone from here — AdminUpload.jsx is no longer used
+//    anywhere and should be deleted from the repo.
+//  - New "Shops" tab (admin only) holds shop creation + the shop
+//    list (ManageShops), out of the Report view entirely, so Report
+//    is just: top row -> search -> filters -> table.
+// Carried over from v2.0:
+//  - Header "Report updated DD-MM-YYYY HH:MM" pill, admin-only refresh.
+//  - Report / Transfers / Shops view switch with a Transfers badge.
+//  - Notification bell (realtime + 60s poll fallback).
+//  - Escape doesn't wipe filters while typing in a form field.
 // =============================================================
 
 import { useCallback, useEffect, useState } from 'react';
@@ -26,11 +26,10 @@ import { useSummaryRefresh, formatStamp } from './lib/summaryRefresh';
 import Login from './components/Login';
 import FilterPanelLive from './components/FilterPanelLive';
 import ReportLive from './components/ReportLive';
-import AdminUpload from './components/AdminUpload';
 import ManageShops from './components/ManageShops';
 import ChangePassword from './components/ChangePassword';
 import CountryStatusCards from './components/CountryStatusCards';
-import StorageOverview from './components/StorageOverview';
+import StorageSummaryCard from './components/StorageSummaryCard';
 import ModelSearchLive, { MODEL_SEARCH_INPUT_ID } from './components/ModelSearchLive';
 import IbtTransfers from './components/IbtTransfers';
 import NotificationBell from './components/NotificationBell';
@@ -45,7 +44,7 @@ export default function App() {
   const [refreshToken, setRefreshToken] = useState(0);
   const { shopsList, refresh: refreshShops } = useShops();
   const [modelJump, setModelJump] = useState(null);
-  const [view, setView] = useState('report'); // report | transfers
+  const [view, setView] = useState('report'); // report | transfers | shops
   const [ibtToken, setIbtToken] = useState(0);
   const [jumpTransferId, setJumpTransferId] = useState(null);
 
@@ -116,6 +115,9 @@ export default function App() {
 
   const refreshing = refreshState === 'working';
 
+  // Admins only get a "Shops" tab; shop accounts never need it.
+  const showShopsTab = account.isAdmin;
+
   return (
     <div className="wrap">
       <header className="app-header">
@@ -124,7 +126,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara Stock &amp; IBT <span className="version-badge">v2.0</span>
+            Sara Stock &amp; IBT <span className="version-badge">v2.1</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -148,6 +150,15 @@ export default function App() {
               <span className="view-tab-badge">{ibtCounts.incoming_pending}</span>
             )}
           </button>
+          {showShopsTab && (
+            <button
+              type="button"
+              className={`view-tab${view === 'shops' ? ' is-active' : ''}`}
+              onClick={() => setView('shops')}
+            >
+              Shops
+            </button>
+          )}
         </nav>
         <div className="header-actions">
           <NotificationBell
@@ -218,55 +229,56 @@ export default function App() {
           openTransferId={jumpTransferId}
           onOpenHandled={() => setJumpTransferId(null)}
         />
+      ) : view === 'shops' ? (
+        <ManageShops shopsList={shopsList} onChanged={refreshShops} />
       ) : (
-      <>
-      <CountryStatusCards refreshToken={refreshToken} />
-
-      {account.isAdmin && (
         <>
-          <AdminUpload
+          <CountryStatusCards
+            refreshToken={refreshToken}
+            isAdmin={account.isAdmin}
             onUploaded={() => {
               bumpData();
               refreshShops();
               reloadRefreshStamp();
             }}
+            trailingCard={
+              account.isAdmin && (
+                <StorageSummaryCard refreshToken={refreshToken} onChanged={bumpData} />
+              )
+            }
           />
-          <StorageOverview refreshToken={refreshToken} onChanged={bumpData} />
-          <ManageShops shopsList={shopsList} onChanged={refreshShops} />
+
+          <ModelSearchLive onSelect={handleModelSelect} />
+
+          {modelJump && (
+            <div className="model-jump-banner">
+              Showing results for Model No <strong>{modelJump}</strong> &mdash; other filters are paused
+              <button type="button" onClick={() => setModelJump(null)}>
+                &times; Clear
+              </button>
+            </div>
+          )}
+
+          <FilterPanelLive
+            filters={filters}
+            setFilters={(updater) => {
+              setModelJump(null);
+              setFilters(updater);
+            }}
+            onClear={() => {
+              setFilters(EMPTY_FILTERS);
+              setModelJump(null);
+            }}
+          />
+
+          <ReportLive
+            key={refreshToken}
+            filters={filters}
+            modelJump={modelJump}
+            canRequest={!account.isAdmin && !!account.shopId}
+            onTransferCreated={bumpIbt}
+          />
         </>
-      )}
-
-      <ModelSearchLive onSelect={handleModelSelect} />
-
-      {modelJump && (
-        <div className="model-jump-banner">
-          Showing results for Model No <strong>{modelJump}</strong> &mdash; other filters are paused
-          <button type="button" onClick={() => setModelJump(null)}>
-            &times; Clear
-          </button>
-        </div>
-      )}
-
-      <FilterPanelLive
-        filters={filters}
-        setFilters={(updater) => {
-          setModelJump(null);
-          setFilters(updater);
-        }}
-        onClear={() => {
-          setFilters(EMPTY_FILTERS);
-          setModelJump(null);
-        }}
-      />
-
-      <ReportLive
-        key={refreshToken}
-        filters={filters}
-        modelJump={modelJump}
-        canRequest={!account.isAdmin && !!account.shopId}
-        onTransferCreated={bumpIbt}
-      />
-      </>
       )}
 
       <button
@@ -282,7 +294,7 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.0</span>
+          <span>v2.1</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>
