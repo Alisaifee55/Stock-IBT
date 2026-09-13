@@ -371,6 +371,34 @@ export function useModelAcrossShops(modelNo, excludeShopId) {
 
 
 /**
+ * Size sort order: named sizes follow the fixed apparel scale below;
+ * anything purely numeric (54, 56, 58 or 1, 2, 3…) sorts ascending by
+ * value; anything else (an unrecognized size string) falls back to
+ * alphabetical, after both of the above. Applied wherever this file
+ * sorts Color/Size rows — not yet wired into the report's own size
+ * filter/columns, which is a separate sort site outside this request.
+ */
+export const SIZE_ORDER = ['3XS', '2XS', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
+
+export function compareSizes(a, b) {
+  const sa = String(a ?? '').trim();
+  const sb = String(b ?? '').trim();
+  const rank = (s) => {
+    const named = SIZE_ORDER.indexOf(s.toUpperCase());
+    if (named !== -1) return [0, named, s];
+    const n = Number(s);
+    if (s !== '' && Number.isFinite(n)) return [1, n, s];
+    return [2, 0, s];
+  };
+  const ra = rank(sa);
+  const rb = rank(sb);
+  if (ra[0] !== rb[0]) return ra[0] - rb[0];
+  if (ra[0] === 1) return ra[1] - rb[1];
+  if (ra[1] !== rb[1]) return ra[1] - rb[1];
+  return ra[2].localeCompare(rb[2]);
+}
+
+/**
  * The full Color x Size x Shop picture for one model, for the IBT Stock
  * Transfer Console (v2.1). One query for every shop's stock_items rows
  * for this model, one for the shop reference rows involved — then
@@ -466,7 +494,7 @@ export function useModelGridAcrossShops(modelNo) {
 
     const rows = [...colorSizeSeen.values()].sort((a, b) => {
       const c = String(a.color || '').localeCompare(String(b.color || ''));
-      return c !== 0 ? c : String(a.size || '').localeCompare(String(b.size || ''));
+      return c !== 0 ? c : compareSizes(a.size, b.size);
     });
 
     return {

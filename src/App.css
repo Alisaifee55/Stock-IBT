@@ -741,13 +741,35 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
 .model-photo-thumb {
   width: 96px; height: 96px; border-radius: 18px; overflow: hidden; position: relative; flex-shrink: 0;
   background: var(--teal-light); border: 1px solid var(--border); box-shadow: 0 6px 16px rgba(33, 90, 86, 0.14);
-  transition: width 220ms ease, height 220ms ease, border-radius 220ms ease;
+  transition: width 220ms ease, height 220ms ease, border-radius 220ms ease, transform 150ms ease, box-shadow 150ms ease;
+  padding: 0; cursor: zoom-in; font: inherit;
 }
+.model-photo-thumb:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(33, 90, 86, 0.22); }
+.model-photo-thumb:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 3px; }
 .model-photo-thumb-img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 200ms ease; }
 .model-photo-thumb-img.is-visible { opacity: 1; }
 .model-photo-thumb-placeholder {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted);
 }
+
+/* Photo lightbox — opens at a fixed 600x800 (scaled down to fit the
+   viewport on smaller screens), closes on backdrop click or Escape. */
+.photo-lightbox {
+  position: fixed; inset: 0; background: rgba(20, 34, 31, 0.6); z-index: 80;
+  display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px;
+  animation: photo-lightbox-fade 180ms ease;
+}
+@keyframes photo-lightbox-fade { from { opacity: 0; } to { opacity: 1; } }
+.photo-lightbox-inner {
+  width: 600px; height: 800px; max-width: 92vw; max-height: 78vh; border-radius: 22px; overflow: hidden;
+  background: var(--card); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.4);
+  display: flex; align-items: center; justify-content: center;
+  animation: photo-lightbox-pop 220ms cubic-bezier(.2,.8,.2,1);
+}
+@keyframes photo-lightbox-pop { from { transform: scale(0.85); opacity: 0.6; } to { transform: scale(1); opacity: 1; } }
+.photo-lightbox-inner img { width: 100%; height: 100%; object-fit: contain; background: var(--teal-light); }
+.photo-lightbox-hint { color: rgba(255, 255, 255, 0.85); font-size: 13px; }
+
 .ibt-console-heading { flex: 1; min-width: 200px; }
 .ibt-console-heading h4 { margin: 0 0 8px; font-size: 22px; color: var(--ink); font-weight: 800; letter-spacing: -0.01em; }
 .ibt-console-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -779,6 +801,14 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
   .ibt-console-totals { width: 100%; justify-content: space-between; gap: 12px; }
 }
 
+/* New in v2.2: green, for Kuwait — reuses the same green already used
+   for "accept" actions elsewhere, so it isn't a brand-new hue. */
+:root {
+  --green: #5f9e6c;
+  --green-dark: #3f6b48;
+  --green-light: #e6f2e8;
+}
+
 /* All-shops grid */
 .ibt-grid-scroll { overflow: auto; max-height: 52vh; border: 1px solid var(--border); border-radius: 14px; }
 .ibt-grid-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-width: 100%; }
@@ -788,14 +818,35 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
   font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; z-index: 2;
   border-bottom: 1px solid var(--border);
 }
-.ibt-grid-shop-head { border-left: 1px solid var(--border); }
-.ibt-grid-shop-head.is-oman { background: var(--coral-light); color: #8a4a34; }
-.ibt-grid-shop-country { font-size: 10px; font-weight: 500; text-transform: none; color: var(--muted); margin-top: 2px; }
-.ibt-grid-you-tag {
-  display: inline-block; margin-left: 5px; background: var(--mustard); color: #fff; border-radius: 6px;
-  padding: 1px 6px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; vertical-align: middle;
+.ibt-grid-shop-head {
+  border-left: 1px solid var(--border); cursor: pointer; padding: 0 !important;
+  transition: background 150ms ease, width 220ms ease;
 }
-.ibt-grid-sub { top: 33px; }
+.ibt-grid-shop-head-inner { padding: 9px 10px 11px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ibt-grid-shop-code { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.ibt-grid-chevron { width: 11px; height: 11px; opacity: 0.55; transition: transform 200ms ease; }
+.ibt-grid-shop-head.is-open .ibt-grid-chevron { transform: rotate(180deg); opacity: 1; }
+.ibt-grid-shop-head:hover { filter: brightness(0.97); }
+
+/* Riviera country tints — teal (UAE), orange (Oman), green (Kuwait) —
+   applied to the header AND every cell in that shop's column, so the
+   whole column reads as one country group, not just its header. */
+.is-uae.ibt-grid-shop-head, th.ibt-grid-sub.is-uae { background: var(--teal-light); color: var(--teal-dark); }
+.is-oman.ibt-grid-shop-head, th.ibt-grid-sub.is-oman { background: var(--orange-light); color: #9a4d1c; }
+.is-kuwait.ibt-grid-shop-head, th.ibt-grid-sub.is-kuwait { background: var(--green-light); color: var(--green-dark); }
+td.ibt-grid-num.is-uae { background: rgba(47, 125, 120, 0.05); }
+td.ibt-grid-num.is-oman { background: rgba(224, 121, 60, 0.06); }
+td.ibt-grid-num.is-kuwait { background: rgba(95, 158, 108, 0.07); }
+.ibt-grid-table tbody tr:nth-child(even) td.ibt-grid-num.is-uae { background: rgba(47, 125, 120, 0.1); }
+.ibt-grid-table tbody tr:nth-child(even) td.ibt-grid-num.is-oman { background: rgba(224, 121, 60, 0.12); }
+.ibt-grid-table tbody tr:nth-child(even) td.ibt-grid-num.is-kuwait { background: rgba(95, 158, 108, 0.14); }
+
+.ibt-grid-shop-country { font-size: 9.5px; font-weight: 600; text-transform: none; opacity: 0.75; }
+.ibt-grid-you-tag {
+  display: inline-block; margin-left: 2px; background: var(--mustard); color: #fff; border-radius: 6px;
+  padding: 1px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; vertical-align: middle;
+}
+.ibt-grid-sub { top: 40px; cursor: default; }
 .ibt-grid-shop-end { border-right: 1px solid var(--border); }
 .ibt-grid-col-color, .ibt-grid-col-size {
   position: sticky; left: 0; background: var(--card); text-align: left; font-weight: 600; z-index: 1;
@@ -806,20 +857,22 @@ thead .ibt-grid-col-color, thead .ibt-grid-col-size { z-index: 3; background: va
   display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted);
   margin-right: 6px; vertical-align: middle;
 }
-.ibt-grid-table tbody tr:nth-child(even) td.ibt-grid-num,
 .ibt-grid-table tbody tr:nth-child(even) td.ibt-grid-col-color,
 .ibt-grid-table tbody tr:nth-child(even) td.ibt-grid-col-size { background: rgba(230, 242, 241, 0.35); }
 .ibt-grid-table tbody td { border-top: 1px solid var(--border); }
+td.ibt-grid-num.ibt-grid-collapsed-cell { cursor: pointer; }
+td.ibt-grid-num.ibt-grid-collapsed-cell:hover { filter: brightness(0.96); }
 .ibt-bal-pill {
   min-width: 30px; padding: 4px 9px; border-radius: 999px; border: none; background: transparent;
-  color: var(--muted); font-weight: 700; font-size: 12.5px; cursor: default;
+  color: var(--muted); font-weight: 700; font-size: 12.5px; cursor: inherit; pointer-events: none;
 }
-.ibt-bal-pill.has-stock { background: var(--teal-light); color: var(--teal-dark); }
-.ibt-bal-pill.is-clickable { cursor: pointer; box-shadow: inset 0 0 0 1px transparent; transition: transform 120ms ease, box-shadow 120ms ease; }
-.ibt-bal-pill.is-clickable:hover { transform: scale(1.08); box-shadow: inset 0 0 0 1.5px var(--teal); }
-.ibt-bal-pill.is-clickable:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
-.ibt-bal-pill.is-queued { background: var(--mustard); color: #fff; }
-.ibt-bal-pill:disabled { cursor: default; }
+.ibt-bal-pill.has-stock { background: rgba(255, 255, 255, 0.75); color: var(--ink); }
+button.ibt-bal-pill { pointer-events: auto; cursor: default; }
+button.ibt-bal-pill.is-clickable { cursor: pointer; box-shadow: inset 0 0 0 1px transparent; transition: transform 120ms ease, box-shadow 120ms ease; }
+button.ibt-bal-pill.is-clickable:hover { transform: scale(1.08); box-shadow: inset 0 0 0 1.5px var(--teal); }
+button.ibt-bal-pill.is-clickable:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+button.ibt-bal-pill.is-queued { background: var(--mustard); color: #fff; }
+button.ibt-bal-pill:disabled { cursor: default; }
 
 /* By-shop view */
 .by-shop-view { display: flex; flex-direction: column; gap: 12px; }
@@ -830,8 +883,10 @@ thead .ibt-grid-col-color, thead .ibt-grid-col-size { z-index: 3; background: va
 }
 .by-shop-tab.is-active { background: var(--teal-dark); border-color: var(--teal-dark); color: #fff; }
 .by-shop-tab.is-mine:not(.is-active) { border-style: dashed; }
-.by-shop-tab.is-oman:not(.is-active) { background: var(--coral-light); border-color: #e0b6a8; color: #8a4a34; }
-.by-shop-tab.is-oman.is-active { background: var(--coral); border-color: var(--coral); }
+.by-shop-tab.is-oman:not(.is-active) { background: var(--orange-light); border-color: #e6b993; color: #9a4d1c; }
+.by-shop-tab.is-oman.is-active { background: var(--orange); border-color: var(--orange); }
+.by-shop-tab.is-kuwait:not(.is-active) { background: var(--green-light); border-color: #a9d0b1; color: var(--green-dark); }
+.by-shop-tab.is-kuwait.is-active { background: var(--green); border-color: var(--green); }
 .by-shop-tab:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
 .by-shop-table-wrap { max-height: 46vh; }
 .by-shop-request-btn {

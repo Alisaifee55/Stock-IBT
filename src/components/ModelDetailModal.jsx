@@ -1,20 +1,18 @@
 // =============================================================
-// ModelDetailModal.jsx — v2.1 — 12-09-2026
-// Redesigned as the "IBT · Stock Transfer Console": clicking a Model
-// No in the report opens this. Changes from v2.0:
-//  - The photo is now a small thumbnail beside the Model No heading,
-//    not a half-width panel — the freed space goes to the grid.
-//  - New "All shops grid" view: every shop's Purchase/Sale/Balance/
-//    Last, side by side, for every Color/Size row of this model.
-//    "By shop" view still exists for a one-shop-at-a-time read.
-//  - "Also in stock at" pill list is gone — the grid already shows
-//    who has stock, in more detail.
-//  - A persistent Transfer cart panel replaces the old separate
-//    CreateTransferModal (now unused — delete it from the repo):
-//    click a Balance cell anywhere to queue it, adjust quantities in
-//    the cart, submit once. A cart can only hold lines from one
-//    supplying shop at a time (server-enforced), so picking a
-//    different shop asks before clearing what's queued.
+// ModelDetailModal.jsx — v2.2 — 12-09-2026
+// Redesigned as the "IBT · Stock Transfer Console". Changes from v2.1:
+//  - Photo is clickable: opens a large (600x800) lightbox, closes on
+//    backdrop click or Escape.
+//  - "All shops grid" reworked to match the reviewed prototype: every
+//    shop starts collapsed to just its Stock number; clicking anywhere
+//    in a shop's column expands it to Purchase/Sale/Stock/Last for
+//    that shop only (one shop open at a time). Once a column is open,
+//    its Stock cell is still the "add to cart" control from v2.1 —
+//    clicking Purchase/Sale/Last, or the header again, just opens/
+//    closes the column rather than queuing anything, so reading the
+//    detail can't accidentally start a transfer.
+//  - Country colouring now reuses the app's own palette (teal/orange/
+//    green for UAE/Oman/Kuwait) instead of the prototype's colours.
 // =============================================================
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
@@ -27,35 +25,65 @@ import TransferCartPanel from './TransferCartPanel';
 const IMAGE_BASE = 'https://pos.saraplaza.net/modelimages';
 export const modelImageUrl = (modelNo) => `${IMAGE_BASE}/${encodeURIComponent(modelNo)}.jpg`;
 
-function ModelPhotoThumb({ modelNo }) {
+function ModelPhoto({ modelNo }) {
   const [state, setState] = useState('loading'); // loading | loaded | missing
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     setState('loading');
   }, [modelNo]);
 
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setExpanded(false);
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [expanded]);
+
   return (
-    <div className="model-photo-thumb">
-      {state !== 'loaded' && (
-        <div className="model-photo-thumb-placeholder">
-          {state === 'loading' ? (
-            <span className="refresh-spinner" aria-hidden="true" />
-          ) : (
-            <span className="model-photo-missing-mark" aria-hidden="true">
-              &#9633;
-            </span>
-          )}
+    <>
+      <button
+        type="button"
+        className="model-photo-thumb"
+        onClick={() => state === 'loaded' && setExpanded(true)}
+        title={state === 'loaded' ? 'Click to enlarge' : undefined}
+        aria-label={`Model ${modelNo} photo${state === 'loaded' ? ', click to enlarge' : ''}`}
+      >
+        {state !== 'loaded' && (
+          <div className="model-photo-thumb-placeholder">
+            {state === 'loading' ? (
+              <span className="refresh-spinner" aria-hidden="true" />
+            ) : (
+              <span className="model-photo-missing-mark" aria-hidden="true">
+                &#9633;
+              </span>
+            )}
+          </div>
+        )}
+        <img
+          src={modelImageUrl(modelNo)}
+          alt={`Model ${modelNo}`}
+          className={`model-photo-thumb-img${state === 'loaded' ? ' is-visible' : ''}`}
+          loading="lazy"
+          onLoad={() => setState('loaded')}
+          onError={() => setState('missing')}
+        />
+      </button>
+
+      {expanded && (
+        <div className="photo-lightbox is-open" onClick={() => setExpanded(false)} role="presentation">
+          <div className="photo-lightbox-inner" onClick={(e) => e.stopPropagation()}>
+            <img src={modelImageUrl(modelNo)} alt={`Model ${modelNo}, enlarged`} />
+          </div>
+          <div className="photo-lightbox-hint">Click anywhere, or press Esc, to close</div>
         </div>
       )}
-      <img
-        src={modelImageUrl(modelNo)}
-        alt={`Model ${modelNo}`}
-        className={`model-photo-thumb-img${state === 'loaded' ? ' is-visible' : ''}`}
-        loading="lazy"
-        onLoad={() => setState('loaded')}
-        onError={() => setState('missing')}
-      />
-    </div>
+    </>
   );
 }
 
@@ -210,7 +238,7 @@ export default function ModelDetailModal({
 
         <div className="ibt-console-scroll" ref={scrollRef} onScroll={handleScroll}>
           <div className={`ibt-console-summary${summaryCollapsed ? ' is-collapsed' : ''}`}>
-            <ModelPhotoThumb modelNo={modelNo} />
+            <ModelPhoto modelNo={modelNo} />
             <div className="ibt-console-heading">
               <h4 id="ibt-console-title">{modelNo}</h4>
               <div className="ibt-console-chips">

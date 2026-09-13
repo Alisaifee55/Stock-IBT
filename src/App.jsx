@@ -1,5 +1,5 @@
 // =============================================================
-// App.jsx — v2.1 — 12-09-2026
+// App.jsx — v2.2 — 12-09-2026
 // Changes from v2.0:
 //  - Top row is now clean and single-purpose: country cards (each
 //    with its own inline upload zone for admins) plus a compact
@@ -126,7 +126,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara Stock &amp; IBT <span className="version-badge">v2.1</span>
+            Sara IBT <span className="version-badge">v2.2</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -296,7 +296,7 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.1</span>
+          <span>v2.2</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>

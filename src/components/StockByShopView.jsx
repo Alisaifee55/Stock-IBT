@@ -37,7 +37,7 @@ export default function StockByShopView({ shops, grid, myShopId, canRequest, car
             type="button"
             className={`by-shop-tab${s.id === activeShop.id ? ' is-active' : ''}${
               s.id === myShopId ? ' is-mine' : ''
-            }${s.country === 'OMAN' ? ' is-oman' : ''}`}
+            }${s.country === 'OMAN' ? ' is-oman' : s.country === 'KUWAIT' ? ' is-kuwait' : ''}`}
             onClick={() => setActiveShopId(s.id)}
           >
             {s.code}
