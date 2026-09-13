@@ -277,6 +277,7 @@ export default function App() {
             modelJump={modelJump}
             canRequest={!account.isAdmin && !!account.shopId}
             onTransferCreated={bumpIbt}
+            myShopId={account.shopId || null}
           />
         </>
       )}

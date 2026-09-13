@@ -341,6 +341,120 @@ export function useModelAcrossShops(modelNo, excludeShopId) {
 }
 
 
+/**
+ * The full Color x Size x Shop picture for one model, for the IBT Stock
+ * Transfer Console (v2.1). One query for every shop's stock_items rows
+ * for this model, one for the shop reference rows involved — then
+ * pivoted client-side into { shops, rows, cellFor }. Row/shop counts
+ * for a single model are always small (a handful of shops, a handful
+ * of colour/size combos), so a client-side pivot is the right call —
+ * no new RPC needed.
+ */
+export function useModelGridAcrossShops(modelNo) {
+  const [items, setItems] = useState(null);
+  const [shops, setShops] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!modelNo) return;
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+
+    (async () => {
+      const { data: itemRows, error: itemErr } = await supabase
+        .from('current_stock_items')
+        .select(
+          'shop_id, color, size, closing_stock, total_sales, total_purchase, last_sales_date, last_purchase_date, sales_price, category, brand'
+        )
+        .eq('model_no', modelNo);
+      if (cancelled) return;
+      if (itemErr) {
+        setError(itemErr.message);
+        setItems([]);
+        setShops([]);
+        setLoading(false);
+        return;
+      }
+
+      const shopIds = [...new Set((itemRows || []).map((r) => r.shop_id))];
+      let shopRows = [];
+      if (shopIds.length > 0) {
+        const { data: sRows, error: sErr } = await supabase
+          .from('shops')
+          .select('id, code, country')
+          .in('id', shopIds);
+        if (cancelled) return;
+        if (sErr) {
+          setError(sErr.message);
+        } else {
+          shopRows = sRows || [];
+        }
+      }
+
+      // Stable order: shop code alphabetically, so the grid doesn't
+      // reshuffle columns between opens of the same model.
+      shopRows.sort((a, b) => String(a.code).localeCompare(String(b.code)));
+
+      setItems(itemRows || []);
+      setShops(shopRows);
+      setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modelNo]);
+
+  const grid = useMemo(() => {
+    if (!items) return null;
+
+    const cellKey = (shopId, color, size) => `${shopId}|${color || ''}|${size || ''}`;
+    const cellMap = new Map();
+    const colorSizeSeen = new Map(); // "color|size" -> {color, size}
+    const colorsSeen = new Set();
+    const sizesSeen = new Set();
+
+    let salesPrice = null;
+    let category = null;
+    let brand = null;
+    const totals = { stock: 0, sales: 0, purchase: 0 };
+
+    for (const r of items) {
+      cellMap.set(cellKey(r.shop_id, r.color, r.size), r);
+      const rowKey = `${r.color || ''}|${r.size || ''}`;
+      if (!colorSizeSeen.has(rowKey)) colorSizeSeen.set(rowKey, { color: r.color, size: r.size });
+      if (r.color) colorsSeen.add(r.color);
+      if (r.size) sizesSeen.add(r.size);
+      totals.stock += Number(r.closing_stock || 0);
+      totals.sales += Number(r.total_sales || 0);
+      totals.purchase += Number(r.total_purchase || 0);
+      if (salesPrice === null && r.sales_price !== null && r.sales_price !== undefined) salesPrice = r.sales_price;
+      if (!category && r.category) category = r.category;
+      if (!brand && r.brand) brand = r.brand;
+    }
+
+    const rows = [...colorSizeSeen.values()].sort((a, b) => {
+      const c = String(a.color || '').localeCompare(String(b.color || ''));
+      return c !== 0 ? c : String(a.size || '').localeCompare(String(b.size || ''));
+    });
+
+    return {
+      rows,
+      cellFor: (shopId, color, size) => cellMap.get(cellKey(shopId, color, size)) || null,
+      colorCount: colorsSeen.size,
+      sizeCount: sizesSeen.size,
+      salesPrice,
+      category,
+      brand,
+      totals,
+    };
+  }, [items]);
+
+  return { shops, grid, loading, error };
+}
+
 export const EXPORT_PAGE_SIZE = 1000;
 export const EXPORT_MAX_ROWS = 50000; // guard: beyond this, the browser struggles
 
