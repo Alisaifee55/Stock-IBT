@@ -67,6 +67,35 @@ export function useShops() {
 
 export const COUNTRIES = ['UAE', 'KUWAIT', 'OMAN'];
 
+// Fixed display order per country, set by the business rather than
+// derived from anything in the data (alphabetical or by-size ordering
+// was rejected). Shops not in either list (e.g. a future Kuwait shop,
+// or a new shop before this list is updated) sort after the named
+// ones, alphabetically, rather than disappearing or erroring.
+export const UAE_SHOP_ORDER = ['TO', 'NS', 'SA', 'HS', 'MM', 'WH'];
+export const OMAN_SHOP_ORDER = ['NF', 'AK', 'SB', 'CCM', 'SQ', 'NQ', 'SCC'];
+
+/**
+ * Orders shops for display: the viewer's own country's fixed list
+ * first, then the other country's fixed list. Viewers with no home
+ * country (admin accounts) default to the UAE-first order.
+ */
+export function sortShopsForViewer(shops, myCountry) {
+  const primary = myCountry === 'OMAN' ? OMAN_SHOP_ORDER : UAE_SHOP_ORDER;
+  const secondary = myCountry === 'OMAN' ? UAE_SHOP_ORDER : OMAN_SHOP_ORDER;
+  const rank = (code) => {
+    const p = primary.indexOf(code);
+    if (p !== -1) return p;
+    const s = secondary.indexOf(code);
+    if (s !== -1) return primary.length + s;
+    return primary.length + secondary.length + 1; // unlisted shops sort last
+  };
+  return [...shops].sort((a, b) => {
+    const r = rank(a.code) - rank(b.code);
+    return r !== 0 ? r : String(a.code).localeCompare(String(b.code));
+  });
+}
+
 /** Per-country status: last upload, rows stored, models tracked, models in stock. */
 export function useCountryStatus(refreshToken) {
   const [status, setStatus] = useState({});

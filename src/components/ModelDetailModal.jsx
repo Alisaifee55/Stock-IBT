@@ -17,8 +17,8 @@
 //    different shop asks before clearing what's queued.
 // =============================================================
 
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { useModelGridAcrossShops, formatIsoDate } from '../lib/stockQueries';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useModelGridAcrossShops, formatIsoDate, sortShopsForViewer } from '../lib/stockQueries';
 import StockGridAllShops from './StockGridAllShops';
 import StockByShopView from './StockByShopView';
 import TransferCartPanel from './TransferCartPanel';
@@ -143,12 +143,25 @@ export default function ModelDetailModal({
   canRequest = false,
   onTransferCreated,
   myShopId = null,
+  myCountry = null,
 }) {
   const { modelNo, shopId, shopCode, lastSalesDate } = model;
-  const { shops, grid, loading, error } = useModelGridAcrossShops(modelNo);
+  const { shops: shopsRaw, grid, loading, error } = useModelGridAcrossShops(modelNo);
+  const shops = useMemo(() => sortShopsForViewer(shopsRaw, myCountry), [shopsRaw, myCountry]);
   const [view, setView] = useState('grid'); // grid | byshop
   const [cart, dispatch] = useReducer(cartReducer, INITIAL_CART);
   const closeBtnRef = useRef(null);
+  const scrollRef = useRef(null);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+
+  const handleScroll = useCallback((e) => {
+    const top = e.target.scrollTop;
+    setSummaryCollapsed((prev) => {
+      if (!prev && top > 36) return true;
+      if (prev && top < 10) return false;
+      return prev;
+    });
+  }, []);
 
   // Escape closes, focus starts on the close button, body scroll locks.
   useEffect(() => {
@@ -184,20 +197,27 @@ export default function ModelDetailModal({
       >
         <div className="ibt-console-topbar">
           <div className="ibt-console-brand">IBT &middot; Stock Transfer Console</div>
+          {summaryCollapsed && (
+            <div className="ibt-console-condensed">
+              <strong>{modelNo}</strong>
+              {priceLabel && <span> &middot; {priceLabel}</span>}
+            </div>
+          )}
           <button ref={closeBtnRef} type="button" className="modal-close" onClick={onClose} aria-label="Close">
             &times;
           </button>
         </div>
 
-        <div className="ibt-console-summary">
-          <ModelPhotoThumb modelNo={modelNo} />
-          <div className="ibt-console-heading">
-            <h4 id="ibt-console-title">{modelNo}</h4>
-            <div className="ibt-console-chips">
-              {priceLabel && <span className="pill pill-neutral">{priceLabel}</span>}
-              <span className="pill pill-neutral">{shops.length} shop{shops.length === 1 ? '' : 's'}</span>
-              {grid && (
-                <span className="pill pill-neutral">
+        <div className="ibt-console-scroll" ref={scrollRef} onScroll={handleScroll}>
+          <div className={`ibt-console-summary${summaryCollapsed ? ' is-collapsed' : ''}`}>
+            <ModelPhotoThumb modelNo={modelNo} />
+            <div className="ibt-console-heading">
+              <h4 id="ibt-console-title">{modelNo}</h4>
+              <div className="ibt-console-chips">
+                {priceLabel && <span className="pill pill-neutral">{priceLabel}</span>}
+                <span className="pill pill-neutral">{shops.length} shop{shops.length === 1 ? '' : 's'}</span>
+                {grid && (
+                  <span className="pill pill-neutral">
                   {grid.colorCount} color{grid.colorCount === 1 ? '' : 's'} &times; {grid.sizeCount} size
                   {grid.sizeCount === 1 ? '' : 's'}
                 </span>
@@ -221,32 +241,32 @@ export default function ModelDetailModal({
               </div>
             </div>
           )}
-        </div>
-
-        <div className="ibt-console-toolbar">
-          <div className="segmented-control" role="tablist" aria-label="Stock view">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'byshop'}
-              className={`segmented-btn${view === 'byshop' ? ' is-active' : ''}`}
-              onClick={() => setView('byshop')}
-            >
-              By shop
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'grid'}
-              className={`segmented-btn${view === 'grid' ? ' is-active' : ''}`}
-              onClick={() => setView('grid')}
-            >
-              All shops grid
-            </button>
           </div>
-        </div>
 
-        <div className="ibt-console-body">
+          <div className="ibt-console-toolbar">
+            <div className="segmented-control" role="tablist" aria-label="Stock view">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'byshop'}
+                className={`segmented-btn${view === 'byshop' ? ' is-active' : ''}`}
+                onClick={() => setView('byshop')}
+              >
+                By shop
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'grid'}
+                className={`segmented-btn${view === 'grid' ? ' is-active' : ''}`}
+                onClick={() => setView('grid')}
+              >
+                All shops grid
+              </button>
+            </div>
+          </div>
+
+          <div className="ibt-console-body">
           <div className="ibt-console-main">
             {loading && (
               <div className="model-modal-loading">
@@ -287,6 +307,7 @@ export default function ModelDetailModal({
 
           <div className="ibt-console-side">
             <TransferCartPanel modelNo={modelNo} cart={cart} dispatch={dispatch} onCreated={onTransferCreated} />
+          </div>
           </div>
         </div>
       </div>

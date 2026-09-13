@@ -30,7 +30,7 @@ export default function StockGridAllShops({ shops, grid, myShopId, canRequest, c
               Size
             </th>
             {shops.map((s) => (
-              <th key={s.id} className="ibt-grid-shop-head" colSpan={4}>
+              <th key={s.id} className={`ibt-grid-shop-head${s.country === 'OMAN' ? ' is-oman' : ''}`} colSpan={4}>
                 {s.code}
                 {s.id === myShopId && <span className="ibt-grid-you-tag">You</span>}
                 <div className="ibt-grid-shop-country">{s.country}</div>

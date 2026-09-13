@@ -278,6 +278,7 @@ export default function App() {
             canRequest={!account.isAdmin && !!account.shopId}
             onTransferCreated={bumpIbt}
             myShopId={account.shopId || null}
+            myCountry={account.shop?.country || null}
           />
         </>
       )}
