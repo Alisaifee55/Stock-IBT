@@ -42,6 +42,15 @@ export function formatIsoDate(iso) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : String(iso);
 }
 
+/** Whole days between an ISO date and now — for "Nd ago" displays. */
+export function daysSince(iso) {
+  if (!iso) return null;
+  const then = new Date(iso);
+  if (isNaN(then.getTime())) return null;
+  const ms = Date.now() - then.getTime();
+  return Math.max(0, Math.floor(ms / 86400000));
+}
+
 /** All shops, fetched once — small reference table. */
 export function useShops() {
   const [shopsById, setShopsById] = useState(new Map());

@@ -1,5 +1,11 @@
 // =============================================================
-// App.jsx — v2.2 — 12-09-2026
+// App.jsx — v2.3 — 12-09-2026
+// Changes from v2.2:
+//  - Search moved below Filters (was above): top row -> filters ->
+//    search -> table.
+//  - The 4 top cards (3 countries + Storage) now auto-collapse to a
+//    one-line summary 5s after being open, and expand again on click
+//    — see useAutoCollapse.js.
 // Changes from v2.0:
 //  - Top row is now clean and single-purpose: country cards (each
 //    with its own inline upload zone for admins) plus a compact
@@ -126,7 +132,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara IBT <span className="version-badge">v2.2</span>
+            Sara IBT <span className="version-badge">v2.3</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -248,17 +254,6 @@ export default function App() {
             }
           />
 
-          <ModelSearchLive onSelect={handleModelSelect} />
-
-          {modelJump && (
-            <div className="model-jump-banner">
-              Showing results for Model No <strong>{modelJump}</strong> &mdash; other filters are paused
-              <button type="button" onClick={() => setModelJump(null)}>
-                &times; Clear
-              </button>
-            </div>
-          )}
-
           <FilterPanelLive
             filters={filters}
             setFilters={(updater) => {
@@ -270,6 +265,17 @@ export default function App() {
               setModelJump(null);
             }}
           />
+
+          <ModelSearchLive onSelect={handleModelSelect} />
+
+          {modelJump && (
+            <div className="model-jump-banner">
+              Showing results for Model No <strong>{modelJump}</strong> &mdash; other filters are paused
+              <button type="button" onClick={() => setModelJump(null)}>
+                &times; Clear
+              </button>
+            </div>
+          )}
 
           <ReportLive
             key={refreshToken}
@@ -296,7 +302,7 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.2</span>
+          <span>v2.3</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>

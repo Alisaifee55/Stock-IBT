@@ -1,23 +1,27 @@
 // =============================================================
-// ReportLive.jsx — v2.0 — 12-09-2026
-// Changes from v1.0:
-//  - DetailRows emitted 11 cells against a 13-column header, so every
-//    Color/Size breakdown showed closing stock under "Country", total
-//    sales under "SP" and total purchase under "Closing Stock". Now
-//    aligned, with the three numbers under their real headings.
+// ReportLive.jsx — v2.3 — 12-09-2026
+// Changes from v2.0:
+//  - Removed the inline per-row "expand to see Color/Size breakdown"
+//    feature (the caret column + DetailRows) — it duplicated what
+//    the Model No modal already shows, now in more detail (the IBT
+//    Stock Transfer Console's grid). One way to see a model's
+//    breakdown, not two.
+//  - The WHOLE row opens that console now, not just the Model No
+//    text — click anywhere in a row.
+//  - When a model search jumps the table to one model, the table
+//    scrolls into view automatically so the result isn't left
+//    off-screen below the fold.
+// Carried over from v2.0:
 //  - Breakdown query failures no longer render as "no breakdown found".
 //  - Empty state instead of a blank table.
 //  - Last Sale renders as DD-MM-YYYY, not raw ISO.
-//  - Clicking the Model No opens the photo + breakdown modal; the
-//    caret still expands the inline breakdown.
 //  - CSV export of every row matching the current filters (not just
 //    the pages scrolled into view), with a live row counter.
 // =============================================================
 
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useStockSummary,
-  useStockDetail,
   formatIsoDate,
   fetchAllSummaryRows,
   EXPORT_MAX_ROWS,
@@ -40,8 +44,6 @@ const COLS = [
   { key: 'days_old', label: 'Days Old', sortable: true },
   { key: 'sales_velocity', label: 'Velocity (units/day)', sortable: true },
 ];
-// One leading cell for the expand caret, then one per column above.
-const TOTAL_CELLS = COLS.length + 1;
 
 // Export carries the same columns the user sees, in the same order,
 // with dates already formatted as DD-MM-YYYY.
@@ -60,68 +62,15 @@ const EXPORT_COLS = [
   { key: 'sales_velocity', label: 'Velocity (units/day)' },
 ];
 
-function DetailRows({ modelNo, shopId }) {
-  const { detail, loading, error } = useStockDetail(modelNo, shopId, true);
-
-  if (loading) {
-    return (
-      <tr className="detail-row">
-        <td colSpan={TOTAL_CELLS}>Loading breakdown…</td>
-      </tr>
-    );
-  }
-  if (error) {
-    return (
-      <tr className="detail-row">
-        <td colSpan={TOTAL_CELLS} className="detail-error">
-          Couldn't load the breakdown: {error}
-        </td>
-      </tr>
-    );
-  }
-  if (!detail || detail.length === 0) {
-    return (
-      <tr className="detail-row">
-        <td colSpan={TOTAL_CELLS}>No Color/Size breakdown found.</td>
-      </tr>
-    );
-  }
-  return (
-    <>
-      {detail.map((d, i) => (
-        <tr className="detail-row" key={`${d.color || ''}|${d.size || ''}|${i}`}>
-          {/* caret column */}
-          <td />
-          {/* spans Model No + Category */}
-          <td colSpan={2} className="detail-label">
-            {d.color || '—'} / {d.size || '—'}
-          </td>
-          {/* Shop */}
-          <td />
-          {/* Country */}
-          <td />
-          {/* SP */}
-          <td />
-          <td>{d.closing_stock}</td>
-          <td>{d.total_sales}</td>
-          <td>{d.total_purchase}</td>
-          {/* Last Sale, Sale Days, Days Old, Velocity */}
-          <td colSpan={4} />
-        </tr>
-      ))}
-    </>
-  );
-}
-
 export default function ReportLive({ filters, modelJump, canRequest = false, onTransferCreated, myShopId = null, myCountry = null }) {
   const [sort, setSort] = useState({ key: 'sales_velocity', dir: 'desc' });
-  const [expanded, setExpanded] = useState(new Set());
   const [openModel, setOpenModel] = useState(null);
   const [exportState, setExportState] = useState('idle'); // idle | working | error
   const [exportCount, setExportCount] = useState(0);
   const [exportError, setExportError] = useState('');
   const [exportNote, setExportNote] = useState('');
   const unmountedRef = useRef(false);
+  const panelRef = useRef(null);
 
   useEffect(
     () => () => {
@@ -160,6 +109,14 @@ export default function ReportLive({ filters, modelJump, canRequest = false, onT
   const { rows, totalCount, loading, error, loadMore, hasMore } = useStockSummary(filters, sort, modelJump);
   const scrollRef = useRef(null);
 
+  // A model search jumped the table to one model: bring the report
+  // panel into view so the result isn't left below the fold.
+  useEffect(() => {
+    if (modelJump) {
+      panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [modelJump]);
+
   const handleSort = (key) => {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
   };
@@ -170,19 +127,10 @@ export default function ReportLive({ filters, modelJump, canRequest = false, onT
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) loadMore();
   };
 
-  const toggleExpand = (key) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
   const isEmpty = !loading && !error && rows.length === 0;
 
   return (
-    <div className="panel">
+    <div className="panel" ref={panelRef}>
       <h3>
         Report
         <span className="count-pill">{totalCount.toLocaleString()} models</span>
@@ -213,7 +161,6 @@ export default function ReportLive({ filters, modelJump, canRequest = false, onT
         <table>
           <thead>
             <tr>
-              <th />
               {COLS.map((c) => (
                 <th
                   key={c.key}
@@ -230,49 +177,35 @@ export default function ReportLive({ filters, modelJump, canRequest = false, onT
           <tbody>
             {rows.map((r) => {
               const key = `${r.model_no}|${r.shop_id}`;
-              const isOpen = expanded.has(key);
+              const openThisModel = () =>
+                setOpenModel({
+                  modelNo: r.model_no,
+                  shopId: r.shop_id,
+                  shopCode: r.shop_code,
+                  shopCountry: r.shop_country,
+                  category: r.category,
+                  salesPrice: r.sales_price,
+                  lastSalesDate: r.last_sales_date,
+                });
               return (
-                <Fragment key={key}>
-                  <tr onClick={() => toggleExpand(key)} className="expandable-row">
-                    <td className="expand-toggle">{isOpen ? '▾' : '▸'}</td>
-                    <td className="model-cell">
-                      <button
-                        type="button"
-                        className="model-link"
-                        title={`View photo and breakdown for ${r.model_no}`}
-                        onClick={(e) => {
-                          // Don't also toggle the inline expand.
-                          e.stopPropagation();
-                          setOpenModel({
-                            modelNo: r.model_no,
-                            shopId: r.shop_id,
-                            shopCode: r.shop_code,
-                            shopCountry: r.shop_country,
-                            category: r.category,
-                            salesPrice: r.sales_price,
-                            lastSalesDate: r.last_sales_date,
-                          });
-                        }}
-                      >
-                        {r.model_no}
-                      </button>
-                    </td>
-                    <td className="shrink-cell" title={r.category}>
-                      {r.category}
-                    </td>
-                    <td>{r.shop_code}</td>
-                    <td>{r.shop_country}</td>
-                    <td>{r.sales_price}</td>
-                    <td>{r.closing_stock}</td>
-                    <td>{r.total_sales}</td>
-                    <td>{r.total_purchase}</td>
-                    <td>{formatIsoDate(r.last_sales_date)}</td>
-                    <td>{r.days_since_last_sale ?? ''}</td>
-                    <td>{r.days_old ?? ''}</td>
-                    <td className="velocity">{r.sales_velocity ?? ''}</td>
-                  </tr>
-                  {isOpen && <DetailRows modelNo={r.model_no} shopId={r.shop_id} />}
-                </Fragment>
+                <tr key={key} onClick={openThisModel} className="expandable-row" title={`View ${r.model_no} — photo, stock across shops`}>
+                  <td className="model-cell">
+                    <span className="model-link">{r.model_no}</span>
+                  </td>
+                  <td className="shrink-cell" title={r.category}>
+                    {r.category}
+                  </td>
+                  <td>{r.shop_code}</td>
+                  <td>{r.shop_country}</td>
+                  <td>{r.sales_price}</td>
+                  <td>{r.closing_stock}</td>
+                  <td>{r.total_sales}</td>
+                  <td>{r.total_purchase}</td>
+                  <td>{formatIsoDate(r.last_sales_date)}</td>
+                  <td>{r.days_since_last_sale ?? ''}</td>
+                  <td>{r.days_old ?? ''}</td>
+                  <td className="velocity">{r.sales_velocity ?? ''}</td>
+                </tr>
               );
             })}
           </tbody>

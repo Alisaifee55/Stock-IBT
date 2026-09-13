@@ -1,16 +1,16 @@
 // =============================================================
-// StorageSummaryCard.jsx — v2.1 — 12-09-2026
-// New in v2.1: compact card for the top row (alongside the country
-// cards) showing just the database total and % of the free-tier
-// ceiling used. Click opens the full StorageOverview panel (per-
-// country sizes + "Delete old data") in a modal — see
-// StorageDetailsModal.jsx. Replaces the old full-width Storage
-// usage panel that sat below the cards.
+// StorageSummaryCard.jsx — v2.3 — 12-09-2026
+// Changes from v2.1: auto-collapses to a one-line summary 5s after
+// being shown, and expands again on click — see useAutoCollapse.js.
+// Once expanded, clicking the card still opens the full StorageOverview
+// panel (per-country sizes + "Delete old data") in a modal, same as
+// before — see StorageDetailsModal.jsx.
 // =============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { withTimeout } from '../lib/summaryRefresh';
+import { useAutoCollapse } from '../lib/useAutoCollapse';
 import StorageDetailsModal from './StorageDetailsModal';
 
 const FREE_TIER_BYTES = 500 * 1024 * 1024; // Supabase free plan ceiling
@@ -30,6 +30,7 @@ export default function StorageSummaryCard({ refreshToken, onChanged }) {
   const [error, setError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const unmountedRef = useRef(false);
+  const { expanded, expand } = useAutoCollapse([dbBytes]);
 
   useEffect(
     () => () => {
@@ -61,6 +62,17 @@ export default function StorageSummaryCard({ refreshToken, onChanged }) {
   }, [load, refreshToken]);
 
   const usedPct = dbBytes === null ? null : Math.min(100, (dbBytes / FREE_TIER_BYTES) * 100);
+
+  if (!expanded) {
+    return (
+      <button type="button" className="country-card is-collapsed" onClick={expand} title="Expand storage usage">
+        <span className="country-card-collapsed-name">Storage</span>
+        <span className="country-card-collapsed-stat">
+          {usedPct === null ? '—' : `${usedPct.toFixed(1)}% used`}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <>

@@ -1,5 +1,5 @@
 // =============================================================
-// summaryRefresh.js — v2.0 — 12-09-2026
+// summaryRefresh.js — v2.3 — 12-09-2026
 // Client for the async stock_summary refresh (migration 18/18a).
 //
 // The old path called rpc('refresh_stock_summary') synchronously and
@@ -171,8 +171,23 @@ export function useSummaryRefresh({ onComplete } = {}) {
       .catch(() => {
         /* pill just stays blank — never block the app on this */
       });
+    // v2.3: the timestamp itself always came from the shared
+    // summary_refresh_jobs table (centralized, not per-browser) — but
+    // before this, a tab only re-fetched it after its OWN admin refresh
+    // or upload, so a tab left open from before someone else's refresh
+    // kept showing its original (possibly blank) value until reloaded.
+    // Polling here means every open tab converges within a minute
+    // without anyone needing to hit F5.
+    const poll = setInterval(() => {
+      fetchLastRefresh()
+        .then((row) => {
+          if (!cancelledRef.current && row?.finished_at) setLastRefreshAt(row.finished_at);
+        })
+        .catch(() => {});
+    }, 60000);
     return () => {
       cancelledRef.current = true;
+      clearInterval(poll);
     };
   }, []);
 

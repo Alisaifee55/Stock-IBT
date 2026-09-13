@@ -1,24 +1,26 @@
 // =============================================================
-// ModelDetailModal.jsx — v2.2 — 12-09-2026
-// Redesigned as the "IBT · Stock Transfer Console". Changes from v2.1:
+// ModelDetailModal.jsx — v2.3 — 12-09-2026
+// Redesigned as the "IBT · Stock Transfer Console". Changes from v2.2:
+//  - "By shop" view is gone — the grid's own expand-a-column already
+//    gives a one-shop-at-a-time read, so there's no longer a second
+//    way to do the same thing. StockByShopView.jsx is unused now and
+//    should be deleted from the repo.
+//  - Transfer cart moved out of a side column into a compact bar
+//    docked right under the header — the grid now gets the console's
+//    full width. See TransferCartPanel.jsx.
+//  - Scrolling the console now also expands it toward full-screen
+//    (not just collapsing the summary block), so the grid gets much
+//    more vertical room too once you're reading it.
+// Carried over from v2.2:
 //  - Photo is clickable: opens a large (600x800) lightbox, closes on
 //    backdrop click or Escape.
-//  - "All shops grid" reworked to match the reviewed prototype: every
-//    shop starts collapsed to just its Stock number; clicking anywhere
-//    in a shop's column expands it to Purchase/Sale/Stock/Last for
-//    that shop only (one shop open at a time). Once a column is open,
-//    its Stock cell is still the "add to cart" control from v2.1 —
-//    clicking Purchase/Sale/Last, or the header again, just opens/
-//    closes the column rather than queuing anything, so reading the
-//    detail can't accidentally start a transfer.
-//  - Country colouring now reuses the app's own palette (teal/orange/
-//    green for UAE/Oman/Kuwait) instead of the prototype's colours.
+//  - Country colouring reuses the app's own palette (teal/orange/
+//    green for UAE/Oman/Kuwait).
 // =============================================================
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { useModelGridAcrossShops, formatIsoDate, sortShopsForViewer } from '../lib/stockQueries';
+import { useModelGridAcrossShops, sortShopsForViewer } from '../lib/stockQueries';
 import StockGridAllShops from './StockGridAllShops';
-import StockByShopView from './StockByShopView';
 import TransferCartPanel from './TransferCartPanel';
 
 // Central POS image host. One place to change if the path ever moves.
@@ -173,18 +175,17 @@ export default function ModelDetailModal({
   myShopId = null,
   myCountry = null,
 }) {
-  const { modelNo, shopId, shopCode, lastSalesDate } = model;
+  const { modelNo } = model;
   const { shops: shopsRaw, grid, loading, error } = useModelGridAcrossShops(modelNo);
   const shops = useMemo(() => sortShopsForViewer(shopsRaw, myCountry), [shopsRaw, myCountry]);
-  const [view, setView] = useState('grid'); // grid | byshop
   const [cart, dispatch] = useReducer(cartReducer, INITIAL_CART);
   const closeBtnRef = useRef(null);
   const scrollRef = useRef(null);
-  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+  const [scrolled, setScrolled] = useState(false); // drives both the collapsed summary and the bigger-page expansion
 
   const handleScroll = useCallback((e) => {
     const top = e.target.scrollTop;
-    setSummaryCollapsed((prev) => {
+    setScrolled((prev) => {
       if (!prev && top > 36) return true;
       if (prev && top < 10) return false;
       return prev;
@@ -217,7 +218,7 @@ export default function ModelDetailModal({
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
-        className="modal-card ibt-console"
+        className={`modal-card ibt-console${scrolled ? ' is-fullscreen' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="ibt-console-title"
@@ -225,7 +226,7 @@ export default function ModelDetailModal({
       >
         <div className="ibt-console-topbar">
           <div className="ibt-console-brand">IBT &middot; Stock Transfer Console</div>
-          {summaryCollapsed && (
+          {scrolled && (
             <div className="ibt-console-condensed">
               <strong>{modelNo}</strong>
               {priceLabel && <span> &middot; {priceLabel}</span>}
@@ -236,8 +237,12 @@ export default function ModelDetailModal({
           </button>
         </div>
 
+        {canRequest && (
+          <TransferCartPanel modelNo={modelNo} cart={cart} dispatch={dispatch} onCreated={onTransferCreated} />
+        )}
+
         <div className="ibt-console-scroll" ref={scrollRef} onScroll={handleScroll}>
-          <div className={`ibt-console-summary${summaryCollapsed ? ' is-collapsed' : ''}`}>
+          <div className={`ibt-console-summary${scrolled ? ' is-collapsed' : ''}`}>
             <ModelPhoto modelNo={modelNo} />
             <div className="ibt-console-heading">
               <h4 id="ibt-console-title">{modelNo}</h4>
@@ -246,56 +251,32 @@ export default function ModelDetailModal({
                 <span className="pill pill-neutral">{shops.length} shop{shops.length === 1 ? '' : 's'}</span>
                 {grid && (
                   <span className="pill pill-neutral">
-                  {grid.colorCount} color{grid.colorCount === 1 ? '' : 's'} &times; {grid.sizeCount} size
-                  {grid.sizeCount === 1 ? '' : 's'}
-                </span>
-              )}
-              {grid?.category && <span className="pill pill-neutral">{grid.category}</span>}
-            </div>
-          </div>
-          {grid && (
-            <div className="ibt-console-totals">
-              <div className="ibt-console-stat">
-                <span className="value">{grid.totals.stock.toLocaleString()}</span>
-                <span className="label">total stock</span>
-              </div>
-              <div className="ibt-console-stat">
-                <span className="value">{grid.totals.sales.toLocaleString()}</span>
-                <span className="label">units sold</span>
-              </div>
-              <div className="ibt-console-stat">
-                <span className="value">{grid.totals.purchase.toLocaleString()}</span>
-                <span className="label">units purchased</span>
+                    {grid.colorCount} color{grid.colorCount === 1 ? '' : 's'} &times; {grid.sizeCount} size
+                    {grid.sizeCount === 1 ? '' : 's'}
+                  </span>
+                )}
+                {grid?.category && <span className="pill pill-neutral">{grid.category}</span>}
               </div>
             </div>
-          )}
-          </div>
-
-          <div className="ibt-console-toolbar">
-            <div className="segmented-control" role="tablist" aria-label="Stock view">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === 'byshop'}
-                className={`segmented-btn${view === 'byshop' ? ' is-active' : ''}`}
-                onClick={() => setView('byshop')}
-              >
-                By shop
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === 'grid'}
-                className={`segmented-btn${view === 'grid' ? ' is-active' : ''}`}
-                onClick={() => setView('grid')}
-              >
-                All shops grid
-              </button>
-            </div>
+            {grid && (
+              <div className="ibt-console-totals">
+                <div className="ibt-console-stat">
+                  <span className="value">{grid.totals.stock.toLocaleString()}</span>
+                  <span className="label">total stock</span>
+                </div>
+                <div className="ibt-console-stat">
+                  <span className="value">{grid.totals.sales.toLocaleString()}</span>
+                  <span className="label">units sold</span>
+                </div>
+                <div className="ibt-console-stat">
+                  <span className="value">{grid.totals.purchase.toLocaleString()}</span>
+                  <span className="label">units purchased</span>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="ibt-console-body">
-          <div className="ibt-console-main">
+          <div className="ibt-console-body ibt-console-body-full">
             {loading && (
               <div className="model-modal-loading">
                 <span className="refresh-spinner" aria-hidden="true" />
@@ -303,7 +284,7 @@ export default function ModelDetailModal({
               </div>
             )}
             {error && <div className="error-box small">Couldn't load stock data: {error}</div>}
-            {!loading && !error && view === 'grid' && (
+            {!loading && !error && (
               <StockGridAllShops
                 shops={shops}
                 grid={grid}
@@ -313,29 +294,13 @@ export default function ModelDetailModal({
                 dispatch={dispatch}
               />
             )}
-            {!loading && !error && view === 'byshop' && (
-              <StockByShopView
-                shops={shops}
-                grid={grid}
-                myShopId={myShopId}
-                canRequest={canRequest}
-                cart={cart}
-                dispatch={dispatch}
-                defaultShopId={myShopId || shopId}
-              />
-            )}
             {!loading && !error && grid && (
               <div className="ibt-console-hint">
                 {canRequest
-                  ? 'Tap a Balance cell to queue it in the Transfer cart.'
-                  : `Last sale here: ${formatIsoDate(lastSalesDate) || '—'} (${shopCode})`}
+                  ? 'Click a shop\u2019s code to see its Purchase/Sale/Stock/Last. Click a Stock number to add it to the cart.'
+                  : 'Click a shop\u2019s code to see its Purchase/Sale/Stock/Last.'}
               </div>
             )}
-          </div>
-
-          <div className="ibt-console-side">
-            <TransferCartPanel modelNo={modelNo} cart={cart} dispatch={dispatch} onCreated={onTransferCreated} />
-          </div>
           </div>
         </div>
       </div>

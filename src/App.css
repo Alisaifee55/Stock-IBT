@@ -160,6 +160,19 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
 .country-card-file { font-size: 11px; color: #b8c0be; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .country-card-empty { font-size: 13px; color: var(--muted); font-style: italic; padding: 8px 0; }
 
+/* v2.3 — auto-collapsed one-line form of any of the 4 top cards */
+.country-card.is-collapsed {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 18px; cursor: pointer; text-align: left; width: 100%; font: inherit;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+  animation: card-collapse-in 200ms ease;
+}
+.country-card.is-collapsed:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(33, 90, 86, 0.12); }
+.country-card.is-collapsed:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+.country-card-collapsed-name { font-size: 13px; font-weight: 700; color: var(--teal-dark); text-transform: uppercase; letter-spacing: 0.03em; }
+.country-card-collapsed-stat { font-size: 13px; font-weight: 600; color: var(--ink); }
+@keyframes card-collapse-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+
 /* Model number smart search */
 .model-search { position: relative; margin-bottom: 16px; }
 .model-search-box {
@@ -503,13 +516,12 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
   .report-table-scroll thead th:nth-child(9),
   .report-table-scroll thead th:nth-child(10),
   .report-table-scroll thead th:nth-child(12),
-  .report-table-scroll tbody tr.expandable-row td:nth-child(1),
-  .report-table-scroll tbody tr.expandable-row td:nth-child(3),
+  .report-table-scroll tbody tr.expandable-row td:nth-child(2),
+  .report-table-scroll tbody tr.expandable-row td:nth-child(4),
   .report-table-scroll tbody tr.expandable-row td:nth-child(5),
-  .report-table-scroll tbody tr.expandable-row td:nth-child(6),
+  .report-table-scroll tbody tr.expandable-row td:nth-child(8),
   .report-table-scroll tbody tr.expandable-row td:nth-child(9),
-  .report-table-scroll tbody tr.expandable-row td:nth-child(10),
-  .report-table-scroll tbody tr.expandable-row td:nth-child(12) { display: none; }
+  .report-table-scroll tbody tr.expandable-row td:nth-child(11) { display: none; }
   .model-link { font-size: 12.5px; }
   /* Touch targets stay tappable even with the tighter padding. */
   .model-link, .select-all-btn, .clear-filters-btn { min-height: 32px; }
@@ -712,7 +724,10 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
 .btn-primary .refresh-spinner { border-color: rgba(255, 255, 255, 0.4); border-top-color: #fff; }
 
 /* ===== v2.1 — IBT Stock Transfer Console (ModelDetailModal redesign) ===== */
-.ibt-console { max-width: 1240px; width: 96vw; }
+.ibt-console { max-width: 1240px; width: 96vw; transition: max-width 260ms ease, width 260ms ease; }
+/* v2.3 — scrolling the console expands it toward full-screen so the
+   grid gets much more room once you're actually reading it. */
+.ibt-console.is-fullscreen { max-width: 99vw; width: 99vw; }
 
 .ibt-console-topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
@@ -727,7 +742,8 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
 .ibt-console-brand { font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; flex-shrink: 0; }
 .ibt-console-brand::before { content: '\25C9'; color: var(--teal); margin-right: 8px; font-size: 10px; }
 
-.ibt-console-scroll { overflow-y: auto; max-height: calc(90vh - 60px); }
+.ibt-console-scroll { overflow-y: auto; max-height: calc(90vh - 106px); transition: max-height 260ms ease; }
+.ibt-console.is-fullscreen .ibt-console-scroll { max-height: calc(97vh - 106px); }
 
 .ibt-console-summary {
   display: flex; align-items: center; gap: 20px; padding: 6px 22px 18px; flex-wrap: wrap;
@@ -778,28 +794,34 @@ footer.app-footer { text-align: center; color: #a9b3b1; font-size: 12px; margin-
 .ibt-console-stat .value { display: block; font-size: 24px; font-weight: 800; color: var(--ink); line-height: 1.1; }
 .ibt-console-stat .label { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 
-.ibt-console-toolbar { display: flex; justify-content: flex-start; padding: 14px 22px 0; }
-.segmented-control {
-  display: inline-flex; background: var(--teal-light); border-radius: 999px; padding: 3px; gap: 2px;
-}
-.segmented-btn {
-  border: none; background: transparent; padding: 8px 16px; border-radius: 999px; font-size: 13px;
-  font-weight: 700; color: var(--teal-dark); cursor: pointer; transition: background 150ms ease, box-shadow 150ms ease;
-}
-.segmented-btn.is-active { background: var(--teal-dark); color: #fff; box-shadow: 0 2px 6px rgba(33, 90, 86, 0.25); }
-.segmented-btn:not(.is-active):hover { background: rgba(255, 255, 255, 0.6); }
-.segmented-btn:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
-
-.ibt-console-body { display: flex; gap: 20px; padding: 16px 22px 22px; align-items: flex-start; }
-.ibt-console-main { flex: 1; min-width: 0; }
-.ibt-console-side { width: 300px; flex-shrink: 0; }
+/* v2.3 — grid now has the console's full width; no side column. */
+.ibt-console-body-full { padding: 16px 22px 22px; }
+.ibt-console.is-fullscreen .ibt-grid-scroll { max-height: 68vh; }
 .ibt-console-hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
 
 @media (max-width: 900px) {
-  .ibt-console-body { flex-direction: column; }
-  .ibt-console-side { width: 100%; }
   .ibt-console-totals { width: 100%; justify-content: space-between; gap: 12px; }
 }
+
+/* v2.3 — Transfer cart bar, docked under the header (was a side panel) */
+.transfer-cart-bar-wrap { border-bottom: 1px solid var(--border); background: var(--paper); }
+.transfer-cart-bar { display: flex; align-items: stretch; gap: 10px; padding: 0 22px; }
+.cartbar-toggle {
+  flex: 1; display: flex; align-items: center; gap: 10px; background: none; border: none; cursor: pointer;
+  padding: 12px 0; font: inherit; color: var(--ink); min-width: 0; text-align: left;
+}
+.cartbar-toggle:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 2px; }
+.cartbar-icon { width: 18px; height: 18px; color: var(--teal-dark); flex-shrink: 0; }
+.cartbar-label { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cartbar-label-empty { color: var(--muted); font-weight: 500; font-style: italic; }
+.cartbar-chevron { width: 13px; height: 13px; color: var(--muted); flex-shrink: 0; transition: transform 200ms ease; }
+.cartbar-chevron.is-open { transform: rotate(180deg); }
+.cartbar-create { padding: 8px 18px; font-size: 13px; align-self: center; }
+.transfer-cart-details {
+  padding: 4px 22px 16px; border-top: 1px dashed var(--border); animation: fade-in-condensed 160ms ease;
+}
+.transfer-cart-lines-row { flex-direction: row; flex-wrap: wrap; max-height: 180px; }
+.transfer-cart-lines-row .cart-line { min-width: 190px; flex: 1 1 190px; }
 
 /* New in v2.2: green, for Kuwait — reuses the same green already used
    for "accept" actions elsewhere, so it isn't a brand-new hue. */
@@ -842,6 +864,9 @@ td.ibt-grid-num.is-kuwait { background: rgba(95, 158, 108, 0.07); }
 .ibt-grid-table tbody tr:nth-child(even) td.ibt-grid-num.is-kuwait { background: rgba(95, 158, 108, 0.14); }
 
 .ibt-grid-shop-country { font-size: 9.5px; font-weight: 600; text-transform: none; opacity: 0.75; }
+.ibt-grid-shop-total { font-size: 10px; font-weight: 700; opacity: 0.85; }
+.ibt-grid-shop-mini-stats { display: flex; gap: 6px; font-size: 9.5px; font-weight: 700; opacity: 0.9; }
+.ibt-grid-shop-mini-stats .is-stock { color: var(--teal-dark); }
 .ibt-grid-you-tag {
   display: inline-block; margin-left: 2px; background: var(--mustard); color: #fff; border-radius: 6px;
   padding: 1px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; vertical-align: middle;
