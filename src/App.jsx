@@ -1,5 +1,5 @@
 // =============================================================
-// App.jsx — v2.3 — 12-09-2026
+// App.jsx — v2.4 — 12-09-2026
 // Changes from v2.2:
 //  - Search moved below Filters (was above): top row -> filters ->
 //    search -> table.
@@ -132,7 +132,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara IBT <span className="version-badge">v2.3</span>
+            Sara IBT <span className="version-badge">v2.4</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -302,7 +302,7 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.3</span>
+          <span>v2.4</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>
