@@ -1,5 +1,11 @@
 // =============================================================
-// App.jsx — v2.6 — 14-09-2026
+// App.jsx — v2.6.1 — 14-09-2026
+// Changes from v2.6: version badge only. The v2.6.1 fix itself is in
+// onesignal.js (init was passed malformed options, so the SDK never
+// registered a subscription) and MessagesView.jsx (the notification
+// banner used to hide itself when push was unavailable, removing the
+// only button that could fix it). Nothing in this file changed
+// behaviourally — the imports it uses are unchanged.
 // Changes from v2.5:
 //  - New "Messages" tab (MessagesView) with an unread badge: shop-to-
 //    shop conversations, shop-level read receipts, and online / last
@@ -200,7 +206,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara IBT <span className="version-badge">v2.6</span>
+            Sara IBT <span className="version-badge">v2.6.1</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -389,7 +395,7 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.6</span>
+          <span>v2.6.1</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>

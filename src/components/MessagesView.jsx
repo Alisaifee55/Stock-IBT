@@ -1,5 +1,13 @@
 // =============================================================
-// MessagesView.jsx — v1.0 — 14-09-2026
+// MessagesView.jsx — v1.1 — 14-09-2026
+// Changes from v1.0: the notification banner no longer HIDES ITSELF
+// when push is unavailable. v1.0 only rendered it while the SDK
+// reported supported === true, so a failed OneSignal init removed the
+// only button that could fix things and said nothing — a silent
+// failure. It now always shows while there is no subscription, states
+// the actual reason, and has a Recheck button. The real subscription
+// test is subscriptionId: browser permission alone means nothing if
+// OneSignal holds no subscription to send to.
 // New in v2.6. The Messages tab: who's online, the inbox, and the
 // conversation itself.
 //
@@ -27,7 +35,7 @@ import {
   HO_KEY,
 } from '../lib/chatQueries';
 import { dateDDMMYYYY, presenceLabel, timeHHMM, parseTs, usePresenceRoster } from '../lib/presence';
-import { askPushPermission, isPushBlockedByIos, readPushState } from '../lib/onesignal';
+import { askPushPermission, readPushState } from '../lib/onesignal';
 
 function isToday(value) {
   const d = parseTs(value);
@@ -61,7 +69,7 @@ export default function MessagesView({
   const [openError, setOpenError] = useState('');
   const [push, setPush] = useState(null);
   const [asking, setAsking] = useState(false);
-  const [pushDismissed, setPushDismissed] = useState(false);
+  const [pushError, setPushError] = useState('');
 
   const bump = useCallback(() => setChatToken((t) => t + 1), []);
   const { threads, loading, error, reload } = useInbox(chatToken);
@@ -93,7 +101,7 @@ export default function MessagesView({
     }
   }, [deepThreadId, onDeepHandled]);
 
-  useEffect(() => {
+  const refreshPushState = useCallback(() => {
     let alive = true;
     readPushState().then((s) => {
       if (alive) setPush(s);
@@ -103,14 +111,36 @@ export default function MessagesView({
     };
   }, []);
 
-  const iosBlocked = isPushBlockedByIos();
+  useEffect(() => refreshPushState(), [refreshPushState]);
 
   const enablePush = async () => {
     setAsking(true);
-    const result = await askPushPermission();
-    setPush((prev) => ({ ...(prev || {}), ...result }));
+    setPushError('');
+    const result = await askPushPermission(myKey);
+    if (!result.ok) setPushError(result.error || 'Could not turn on notifications.');
+    // Re-read rather than trusting the call: the only proof that
+    // worked is a subscription id coming back.
+    await new Promise((r) => setTimeout(r, 1200));
+    const fresh = await readPushState();
+    setPush(fresh);
     setAsking(false);
   };
+
+  // The one question that matters: does OneSignal hold a subscription
+  // for this browser? Everything else is a symptom.
+  const pushReady = !!push?.subscriptionId;
+  const iosBlocked = push?.iosBlocked === true;
+
+  const pushReason = (() => {
+    if (!push) return 'Checking…';
+    if (push.initError) return `Notifications unavailable: ${push.initError}`;
+    if (iosBlocked) return 'On iPhone, add this app to your Home Screen first, then open it from there.';
+    if (!push.supported) return 'This browser does not support notifications.';
+    if (!push.permission) return 'This device has not allowed notifications yet.';
+    if (!push.optedIn) return 'Notifications are allowed but switched off for this device.';
+    if (!push.subscriptionId) return 'Allowed, but this device is not registered yet — try Recheck.';
+    return '';
+  })();
 
   // Everyone this account can start a conversation with. Head Office
   // is a real participant without a shop row, so it joins the list as
@@ -158,40 +188,30 @@ export default function MessagesView({
   );
   const onlineCount = others.filter((r) => r.online).length;
 
-  const showPushBanner =
-    !pushDismissed && (iosBlocked || (push && push.supported && !push.permission));
-
   return (
     <div className="chat-wrap">
-      {showPushBanner && (
+      {!pushReady && (
         <div className="chat-push-banner" role="status">
           <div>
-            {iosBlocked ? (
-              <>
-                <strong>Add this app to your Home Screen for notifications.</strong> On iPhone,
-                notifications only work from the installed app: tap Share, then “Add to Home
-                Screen”, and open it from there.
-              </>
-            ) : (
-              <>
-                <strong>Turn on notifications</strong> to be told about new messages when this
-                app isn’t open.
-              </>
+            <strong>Notifications are off for this device.</strong> {pushReason}
+            {pushError && <div className="chat-failed">{pushError}</div>}
+            {push?.loginError && (
+              <div className="chat-failed">Shop not linked: {push.loginError}</div>
             )}
           </div>
           <div className="chat-push-actions">
-            {!iosBlocked && (
+            {!iosBlocked && !push?.initError && (
               <button type="button" className="btn btn-primary" onClick={enablePush} disabled={asking}>
                 {asking ? 'Waiting…' : 'Allow notifications'}
               </button>
             )}
             <button
               type="button"
-              className="chat-banner-close"
-              onClick={() => setPushDismissed(true)}
-              aria-label="Dismiss this message"
+              className="btn btn-reset"
+              onClick={() => refreshPushState()}
+              disabled={asking}
             >
-              &times;
+              Recheck
             </button>
           </div>
         </div>
