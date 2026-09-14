@@ -1,5 +1,21 @@
 // =============================================================
-// App.jsx — v2.5 — 12-09-2026
+// App.jsx — v2.6 — 14-09-2026
+// Changes from v2.5:
+//  - New "Messages" tab (MessagesView) with an unread badge: shop-to-
+//    shop conversations, shop-level read receipts, and online / last
+//    seen for every shop.
+//  - Presence heartbeat mounted app-wide (useHeartbeat): while this
+//    tab is visible the shop reads as online; 90s after it stops, it
+//    decays to "last seen".
+//  - OneSignal wired in: init once, then login(memberKey) so pushes
+//    target the SHOP (shops.id, or 'HO' for Head Office) and reach
+//    every device it's signed in on. Sign-out releases that identity
+//    so the next shop on a shared device doesn't inherit it.
+//  - Push notification clicks land on ?view=messages&thread=<id>,
+//    read once on load and opened directly.
+//  - chat.css imported as its own stylesheet — App.css is untouched
+//    by this version, so none of the existing report/IBT styling is
+//    at risk from the messaging work.
 // Changes from v2.4:
 //  - Mounts CartProvider (cartContext.jsx) around the whole app and
 //    renders the app-level TransferCartPanel once, right under the
@@ -32,6 +48,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
+import './chat.css';
 import logo from './assets/sara-logo.png';
 import { useAuth } from './lib/AuthProvider';
 import { EMPTY_FILTERS, useShops } from './lib/stockQueries';
@@ -48,10 +65,30 @@ import ModelSearchLive, { MODEL_SEARCH_INPUT_ID } from './components/ModelSearch
 import IbtTransfers from './components/IbtTransfers';
 import NotificationBell from './components/NotificationBell';
 import TransferCartPanel from './components/TransferCartPanel';
+import MessagesView from './components/MessagesView';
 import { useIbtCounts } from './lib/ibtQueries';
+import { memberKeyFor, useChatUnread } from './lib/chatQueries';
+import { useHeartbeat } from './lib/presence';
+import { identifyShop, initOneSignal, releaseShop } from './lib/onesignal';
 import { ResetIcon } from './components/icons';
 
 const FORM_TAGS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
+
+/** A push notification click arrives as ?view=messages&thread=<id>.
+ *  Read once, at module scope, before React renders. */
+function readDeepLink() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      view: params.get('view') || null,
+      thread: params.get('thread') || null,
+    };
+  } catch {
+    return { view: null, thread: null };
+  }
+}
+
+const DEEP_LINK = readDeepLink();
 
 export default function App() {
   const { session, account, accountError, signOut } = useAuth();
@@ -59,9 +96,10 @@ export default function App() {
   const [refreshToken, setRefreshToken] = useState(0);
   const { shopsList, refresh: refreshShops } = useShops();
   const [modelJump, setModelJump] = useState(null);
-  const [view, setView] = useState('report'); // report | transfers | shops
+  const [view, setView] = useState(DEEP_LINK.view === 'messages' ? 'messages' : 'report'); // report | transfers | shops | messages
   const [ibtToken, setIbtToken] = useState(0);
   const [jumpTransferId, setJumpTransferId] = useState(null);
+  const [deepThreadId, setDeepThreadId] = useState(DEEP_LINK.thread);
 
   const bumpData = useCallback(() => setRefreshToken((t) => t + 1), []);
   const {
@@ -79,6 +117,26 @@ export default function App() {
     setIbtToken((t) => t + 1);
     reloadIbtCounts();
   }, [reloadIbtCounts]);
+
+  // Messaging: identity, heartbeat, unread badge.
+  const memberKey = memberKeyFor(account);
+  const signedIn = !!account && !!memberKey;
+  useHeartbeat(signedIn);
+  const { unread: chatUnread, reload: reloadChatUnread } = useChatUnread(0, signedIn);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    initOneSignal();
+    identifyShop(memberKey);
+  }, [signedIn, memberKey]);
+
+  const handleSignOut = useCallback(() => {
+    // Release the push identity first: on a shared shop device the
+    // next person signing in must not keep receiving this shop's
+    // notifications.
+    releaseShop();
+    signOut();
+  }, [signOut]);
 
   const focusModelSearch = useCallback(() => {
     const el = document.getElementById(MODEL_SEARCH_INPUT_ID);
@@ -142,7 +200,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara IBT <span className="version-badge">v2.5</span>
+            Sara IBT <span className="version-badge">v2.6</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -165,6 +223,14 @@ export default function App() {
             {ibtCounts.incoming_pending > 0 && (
               <span className="view-tab-badge">{ibtCounts.incoming_pending}</span>
             )}
+          </button>
+          <button
+            type="button"
+            className={`view-tab${view === 'messages' ? ' is-active' : ''}`}
+            onClick={() => setView('messages')}
+          >
+            Messages
+            {chatUnread > 0 && <span className="view-tab-badge">{chatUnread}</span>}
           </button>
           {showShopsTab && (
             <button
@@ -211,7 +277,7 @@ export default function App() {
             )}
           </div>
           <ChangePassword />
-          <button className="btn btn-reset signout-btn" onClick={signOut}>
+          <button className="btn btn-reset signout-btn" onClick={handleSignOut}>
             Sign out
           </button>
         </div>
@@ -246,6 +312,15 @@ export default function App() {
           onChanged={bumpIbt}
           openTransferId={jumpTransferId}
           onOpenHandled={() => setJumpTransferId(null)}
+        />
+      ) : view === 'messages' ? (
+        <MessagesView
+          account={account}
+          myKey={memberKey}
+          shopsList={shopsList}
+          deepThreadId={deepThreadId}
+          onDeepHandled={() => setDeepThreadId(null)}
+          onChanged={reloadChatUnread}
         />
       ) : view === 'shops' ? (
         <ManageShops shopsList={shopsList} onChanged={refreshShops} />
@@ -314,7 +389,7 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.5</span>
+          <span>v2.6</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>
