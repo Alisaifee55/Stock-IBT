@@ -1,32 +1,39 @@
 // =============================================================
-// StockGridAllShops.jsx — v2.4 — 13-09-2026
-// Changes from v2.3:
-//  - Color/Size rows now group under one big filled Color cell per
-//    colour (Option B, approved) — the cell fills with the actual
-//    colour ("Dark Green" fills dark green), spanning that colour's
-//    Size rows, instead of repeating the colour name on every row.
-//    One adaptation from the literal Option B mock: sizes stay as
-//    real per-row data here rather than becoming fixed S1..S4
-//    columns aggregated across shops — an IBT request needs an exact
-//    size, and aggregating sizes away would make the Stock numbers
-//    un-clickable for a specific size. Flagging this since it's a
-//    deliberate deviation from the reviewed mock, not an oversight.
-//  - Collapsed shop header now shows just the number (no "in stock"
-//    text), bigger.
-//  - Expanded shop header's Purchase/Sale/Stock totals now show as
-//    plain numbers (no P/S/ST prefixes), bigger, laid out in a 4-
-//    column grid so they land under the PUR/SALE/STOCK/LAST labels
-//    in the row below.
+// StockGridAllShops.jsx — v2.5 — 13-09-2026
+// Changes from v2.4:
+//  - Two-way now: clicking a Stock number on ANOTHER shop still
+//    straight-adds a "request from them" line (unchanged). Clicking
+//    YOUR OWN shop's Stock number now opens a shop picker to choose
+//    where to SEND it — previously your own column wasn't clickable.
+//  - Head Office (admin) accounts have no shop of their own, so every
+//    Stock click opens the picker: the clicked shop supplies, the
+//    picked shop requests.
+//  - Reads/writes the app-level cart via useCart() instead of local
+//    props — the cart now spans every model and shop you visit, not
+//    just this one console session.
+//  - A slightly heavier bottom border now separates each colour's
+//    group of Size rows from the next, so adjacent colours don't run
+//    together.
+// Carried over from v2.4:
+//  - Big filled Color cell per colour (Option B), real per-row Size
+//    data (not aggregated), fixed shop order + country colour tint,
+//    collapsed/expanded header number formatting, "Nd ago" last sale.
 // =============================================================
 
 import { Fragment, useMemo, useState } from 'react';
 import { daysSince } from '../lib/stockQueries';
 import { resolveColorFill } from '../lib/colorFill';
+import { useCart } from '../lib/cartContext';
+import ShopPickerPopover from './ShopPickerPopover';
 
 const COUNTRY_CLASS = { UAE: 'is-uae', OMAN: 'is-oman', KUWAIT: 'is-kuwait' };
 
-export default function StockGridAllShops({ shops, grid, myShopId, canRequest, cart, dispatch }) {
+export default function StockGridAllShops({ modelNo, shops, grid, myShopId, canRequest, isAdmin }) {
   const [expandedShopId, setExpandedShopId] = useState(null);
+  const [picker, setPicker] = useState(null); // { supplyingShop, color, size, available } | null
+  const cart = useCart();
+  const canTransact = canRequest || isAdmin;
+  const myShop = useMemo(() => shops.find((s) => s.id === myShopId) || null, [shops, myShopId]);
 
   // Per-shop totals (Purchase / Sale / Stock) across every Color/Size
   // row of this model — drives both the collapsed "total stock"
@@ -68,6 +75,32 @@ export default function StockGridAllShops({ shops, grid, myShopId, canRequest, c
   }
 
   const toggle = (shopId) => setExpandedShopId((cur) => (cur === shopId ? null : shopId));
+
+  const addLine = (requestingShop, supplyingShop, color, size, available) => {
+    cart.addLine({
+      requestingShopId: requestingShop.id,
+      requestingShopCode: requestingShop.code,
+      supplyingShopId: supplyingShop.id,
+      supplyingShopCode: supplyingShop.code,
+      modelNo,
+      color,
+      size,
+      available,
+    });
+  };
+
+  const handleStockClick = (shop, color, size, available) => {
+    if (isAdmin) {
+      setPicker({ supplyingShop: shop, color, size, available });
+      return;
+    }
+    if (!canRequest || !myShop) return;
+    if (shop.id === myShopId) {
+      setPicker({ supplyingShop: shop, color, size, available }); // send: pick the destination
+    } else {
+      addLine(myShop, shop, color, size, available); // request: straight add, no picker needed
+    }
+  };
 
   return (
     <div className="ibt-grid-scroll">
@@ -141,8 +174,9 @@ export default function StockGridAllShops({ shops, grid, myShopId, canRequest, c
           {rowGroups.map((group, gi) =>
             group.sizeRows.map((row, ri) => {
               const fill = ri === 0 ? resolveColorFill(row.color) : null;
+              const isGroupEnd = ri === group.sizeRows.length - 1;
               return (
-                <tr key={`${group.color || ''}|${row.size || ''}|${gi}-${ri}`}>
+                <tr key={`${group.color || ''}|${row.size || ''}|${gi}-${ri}`} className={isGroupEnd ? 'ibt-grid-color-group-end' : ''}>
                   {ri === 0 && (
                     <td
                       className="ibt-grid-sticky ibt-grid-col-color ibt-grid-color-fill"
@@ -155,35 +189,31 @@ export default function StockGridAllShops({ shops, grid, myShopId, canRequest, c
                   <td className="ibt-grid-sticky ibt-grid-col-size">{row.size || '—'}</td>
                   {shops.map((s) => {
                     const cell = grid.cellFor(s.id, row.color, row.size);
-                    const isMine = s.id === myShopId;
                     const bal = cell ? Number(cell.closing_stock) : null;
-                    const cartKey = `${row.color || ''}|${row.size || ''}`;
-                    const queuedHere = cart.supplyingShopId === s.id && cart.lines.has(cartKey);
+                    const queuedHere = cell && cart.isQueued(modelNo, row.color, row.size, s.id);
                     const isOpen = s.id === expandedShopId;
                     const countryClass = COUNTRY_CLASS[s.country] || '';
-                    const clickableToRequest = !!cell && bal > 0 && !isMine && canRequest;
+                    const clickable = !!cell && bal > 0 && canTransact;
 
                     const stockBtn = cell ? (
                       <button
                         type="button"
-                        className={`ibt-bal-pill${bal > 0 ? ' has-stock' : ''}${
-                          clickableToRequest ? ' is-clickable' : ''
-                        }${queuedHere ? ' is-queued' : ''}`}
-                        disabled={!clickableToRequest}
+                        className={`ibt-bal-pill${bal > 0 ? ' has-stock' : ''}${clickable ? ' is-clickable' : ''}${
+                          queuedHere ? ' is-queued' : ''
+                        }`}
+                        disabled={!clickable}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (clickableToRequest) {
-                            dispatch({ type: 'pick', shop: s, color: row.color, size: row.size, available: bal });
-                          }
+                          if (clickable) handleStockClick(s, row.color, row.size, bal);
                         }}
                         title={
-                          isMine
-                            ? 'This is your own shop'
-                            : clickableToRequest
-                            ? `Add to cart from ${s.code}`
+                          !canTransact
+                            ? undefined
                             : bal <= 0
-                            ? 'Nothing to request here'
-                            : undefined
+                            ? 'Nothing to move here'
+                            : s.id === myShopId || isAdmin
+                            ? `Send from ${s.code}…`
+                            : `Request from ${s.code}`
                         }
                       >
                         {bal}
@@ -217,6 +247,23 @@ export default function StockGridAllShops({ shops, grid, myShopId, canRequest, c
           )}
         </tbody>
       </table>
+
+      {picker && (
+        <ShopPickerPopover
+          title={
+            isAdmin
+              ? `Requesting shop — supplying from ${picker.supplyingShop.code}`
+              : `Send ${picker.color || ''} ${picker.size || ''} to…`
+          }
+          shops={shops}
+          excludeShopId={picker.supplyingShop.id}
+          onClose={() => setPicker(null)}
+          onPick={(destShop) => {
+            addLine(destShop, picker.supplyingShop, picker.color, picker.size, picker.available);
+            setPicker(null);
+          }}
+        />
+      )}
     </div>
   );
 }

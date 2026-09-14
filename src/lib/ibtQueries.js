@@ -159,6 +159,27 @@ export async function createTransfer(supplyingShopId, lineItems) {
   return data;
 }
 
+/**
+ * v2.5 — used for every transfer now (requests, sends, and Head
+ * Office any-shop-to-any-shop transfers): both shop ids are explicit,
+ * so it works regardless of which side the caller is on. Needs the
+ * create_ibt_transfer_v2 RPC — see migration 24 in the handoff doc
+ * (proposed, not yet verified against the live schema).
+ */
+export async function createTransferV2(requestingShopId, supplyingShopId, lineItems) {
+  const { data, error } = await withTimeout(
+    supabase.rpc('create_ibt_transfer_v2', {
+      p_requesting_shop_id: requestingShopId,
+      p_supplying_shop_id: supplyingShopId,
+      p_line_items: lineItems,
+    }),
+    20000,
+    'Creating the transfer'
+  );
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function decideLineItem(lineItemId, decision) {
   const { data, error } = await withTimeout(
     supabase.rpc('decide_ibt_line_item', {

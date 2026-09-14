@@ -1,27 +1,23 @@
 // =============================================================
-// ModelDetailModal.jsx — v2.3 — 12-09-2026
-// Redesigned as the "IBT · Stock Transfer Console". Changes from v2.2:
-//  - "By shop" view is gone — the grid's own expand-a-column already
-//    gives a one-shop-at-a-time read, so there's no longer a second
-//    way to do the same thing. StockByShopView.jsx is unused now and
-//    should be deleted from the repo.
-//  - Transfer cart moved out of a side column into a compact bar
-//    docked right under the header — the grid now gets the console's
-//    full width. See TransferCartPanel.jsx.
-//  - Scrolling the console now also expands it toward full-screen
-//    (not just collapsing the summary block), so the grid gets much
-//    more vertical room too once you're reading it.
-// Carried over from v2.2:
+// ModelDetailModal.jsx — v2.5 — 13-09-2026
+// Changes from v2.3: the Transfer cart is app-level now (see
+// cartContext.jsx) — it no longer lives inside this modal, so it isn't
+// mounted here any more. It's rendered once in App.jsx so it persists
+// as you close this console and open another model. StockGridAllShops
+// now reads the cart itself via useCart() and needs modelNo + isAdmin
+// passed to it directly.
+// Carried over from v2.3/v2.2:
 //  - Photo is clickable: opens a large (600x800) lightbox, closes on
 //    backdrop click or Escape.
 //  - Country colouring reuses the app's own palette (teal/orange/
 //    green for UAE/Oman/Kuwait).
+//  - Scrolling the console expands it toward full-screen and collapses
+//    the summary block, so the grid gets more room.
 // =============================================================
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useModelGridAcrossShops, sortShopsForViewer } from '../lib/stockQueries';
 import StockGridAllShops from './StockGridAllShops';
-import TransferCartPanel from './TransferCartPanel';
 
 // Central POS image host. One place to change if the path ever moves.
 const IMAGE_BASE = 'https://pos.saraplaza.net/modelimages';
@@ -89,96 +85,17 @@ function ModelPhoto({ modelNo }) {
   );
 }
 
-const INITIAL_CART = {
-  supplyingShopId: null,
-  supplyingShopCode: '',
-  supplyingShopCountry: '',
-  lines: new Map(),
-  pendingSwitch: null,
-};
-
-function cartReducer(state, action) {
-  switch (action.type) {
-    case 'pick': {
-      const { shop, color, size, available } = action;
-      const key = `${color || ''}|${size || ''}`;
-
-      // Cart empty, or same supplying shop already in progress: upsert.
-      if (!state.supplyingShopId || state.supplyingShopId === shop.id) {
-        const lines = new Map(state.lines);
-        const existing = lines.get(key);
-        const nextQty = Math.min(available, (existing?.qty || 0) + 1);
-        lines.set(key, { color, size, qty: nextQty, available });
-        return {
-          ...state,
-          supplyingShopId: shop.id,
-          supplyingShopCode: shop.code,
-          supplyingShopCountry: shop.country,
-          lines,
-          pendingSwitch: null,
-        };
-      }
-
-      // Different shop: a transfer can only have one supplying shop, so
-      // ask before wiping out what's already queued.
-      return { ...state, pendingSwitch: { shop, color, size, available } };
-    }
-    case 'confirmSwitch': {
-      if (!state.pendingSwitch) return state;
-      const { shop, color, size, available } = state.pendingSwitch;
-      const key = `${color || ''}|${size || ''}`;
-      const lines = new Map();
-      lines.set(key, { color, size, qty: 1, available });
-      return {
-        supplyingShopId: shop.id,
-        supplyingShopCode: shop.code,
-        supplyingShopCountry: shop.country,
-        lines,
-        pendingSwitch: null,
-      };
-    }
-    case 'cancelSwitch':
-      return { ...state, pendingSwitch: null };
-    case 'setQty': {
-      const lines = new Map(state.lines);
-      const line = lines.get(action.key);
-      if (!line) return state;
-      let n = action.qty === '' ? 0 : Math.floor(Number(action.qty));
-      if (!Number.isFinite(n) || n < 0) n = 0;
-      if (n > line.available) n = line.available;
-      if (n <= 0) {
-        lines.delete(action.key);
-      } else {
-        lines.set(action.key, { ...line, qty: n });
-      }
-      if (lines.size === 0) return { ...INITIAL_CART };
-      return { ...state, lines };
-    }
-    case 'removeLine': {
-      const lines = new Map(state.lines);
-      lines.delete(action.key);
-      if (lines.size === 0) return { ...INITIAL_CART };
-      return { ...state, lines };
-    }
-    case 'clear':
-      return { ...INITIAL_CART };
-    default:
-      return state;
-  }
-}
-
 export default function ModelDetailModal({
   model,
   onClose,
   canRequest = false,
-  onTransferCreated,
+  isAdmin = false,
   myShopId = null,
   myCountry = null,
 }) {
   const { modelNo } = model;
   const { shops: shopsRaw, grid, loading, error } = useModelGridAcrossShops(modelNo);
   const shops = useMemo(() => sortShopsForViewer(shopsRaw, myCountry), [shopsRaw, myCountry]);
-  const [cart, dispatch] = useReducer(cartReducer, INITIAL_CART);
   const closeBtnRef = useRef(null);
   const scrollRef = useRef(null);
   const [scrolled, setScrolled] = useState(false); // drives both the collapsed summary and the bigger-page expansion
@@ -215,6 +132,8 @@ export default function ModelDetailModal({
     return p !== null && p !== undefined ? `AED ${Number(p).toLocaleString()}` : null;
   }, [grid, model.salesPrice]);
 
+  const canTransact = canRequest || isAdmin;
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
@@ -236,10 +155,6 @@ export default function ModelDetailModal({
             &times;
           </button>
         </div>
-
-        {canRequest && (
-          <TransferCartPanel modelNo={modelNo} cart={cart} dispatch={dispatch} onCreated={onTransferCreated} />
-        )}
 
         <div className="ibt-console-scroll" ref={scrollRef} onScroll={handleScroll}>
           <div className={`ibt-console-summary${scrolled ? ' is-collapsed' : ''}`}>
@@ -286,18 +201,18 @@ export default function ModelDetailModal({
             {error && <div className="error-box small">Couldn't load stock data: {error}</div>}
             {!loading && !error && (
               <StockGridAllShops
+                modelNo={modelNo}
                 shops={shops}
                 grid={grid}
                 myShopId={myShopId}
                 canRequest={canRequest}
-                cart={cart}
-                dispatch={dispatch}
+                isAdmin={isAdmin}
               />
             )}
             {!loading && !error && grid && (
               <div className="ibt-console-hint">
-                {canRequest
-                  ? 'Click a shop\u2019s code to see its Purchase/Sale/Stock/Last. Click a Stock number to add it to the cart.'
+                {canTransact
+                  ? 'Click a shop\u2019s code to see its Purchase/Sale/Stock/Last. Click a Stock number to request it (or send your own) — it queues in the cart above.'
                   : 'Click a shop\u2019s code to see its Purchase/Sale/Stock/Last.'}
               </div>
             )}

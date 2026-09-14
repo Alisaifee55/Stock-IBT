@@ -1,5 +1,8 @@
 // =============================================================
-// ReportLive.jsx — v2.3 — 12-09-2026
+// ReportLive.jsx — v2.5 — 12-09-2026
+// Changes from v2.3: passes isAdmin through to ModelDetailModal instead
+// of onTransferCreated (the transfer cart moved app-level in v2.5 —
+// see cartContext.jsx — so this file no longer needs to know about it).
 // Changes from v2.0:
 //  - Removed the inline per-row "expand to see Color/Size breakdown"
 //    feature (the caret column + DetailRows) — it duplicated what
@@ -62,7 +65,7 @@ const EXPORT_COLS = [
   { key: 'sales_velocity', label: 'Velocity (units/day)' },
 ];
 
-export default function ReportLive({ filters, modelJump, canRequest = false, onTransferCreated, myShopId = null, myCountry = null }) {
+export default function ReportLive({ filters, modelJump, canRequest = false, isAdmin = false, myShopId = null, myCountry = null }) {
   const [sort, setSort] = useState({ key: 'sales_velocity', dir: 'desc' });
   const [openModel, setOpenModel] = useState(null);
   const [exportState, setExportState] = useState('idle'); // idle | working | error
@@ -230,7 +233,7 @@ export default function ReportLive({ filters, modelJump, canRequest = false, onT
           model={openModel}
           onClose={() => setOpenModel(null)}
           canRequest={canRequest}
-          onTransferCreated={onTransferCreated}
+          isAdmin={isAdmin}
           myShopId={myShopId}
           myCountry={myCountry}
         />

@@ -1,5 +1,12 @@
 // =============================================================
-// App.jsx — v2.4 — 12-09-2026
+// App.jsx — v2.5 — 12-09-2026
+// Changes from v2.4:
+//  - Mounts CartProvider (cartContext.jsx) around the whole app and
+//    renders the app-level TransferCartPanel once, right under the
+//    header — the IBT cart is no longer scoped to one model console,
+//    it persists across every model and shop you visit.
+//  - ReportLive now also gets isAdmin, so Head Office accounts can
+//    build transfers between two shops that aren't their own.
 // Changes from v2.2:
 //  - Search moved below Filters (was above): top row -> filters ->
 //    search -> table.
@@ -29,6 +36,7 @@ import logo from './assets/sara-logo.png';
 import { useAuth } from './lib/AuthProvider';
 import { EMPTY_FILTERS, useShops } from './lib/stockQueries';
 import { useSummaryRefresh, formatStamp } from './lib/summaryRefresh';
+import { CartProvider } from './lib/cartContext';
 import Login from './components/Login';
 import FilterPanelLive from './components/FilterPanelLive';
 import ReportLive from './components/ReportLive';
@@ -39,6 +47,7 @@ import StorageSummaryCard from './components/StorageSummaryCard';
 import ModelSearchLive, { MODEL_SEARCH_INPUT_ID } from './components/ModelSearchLive';
 import IbtTransfers from './components/IbtTransfers';
 import NotificationBell from './components/NotificationBell';
+import TransferCartPanel from './components/TransferCartPanel';
 import { useIbtCounts } from './lib/ibtQueries';
 import { ResetIcon } from './components/icons';
 
@@ -125,6 +134,7 @@ export default function App() {
   const showShopsTab = account.isAdmin;
 
   return (
+    <CartProvider myShopId={account.shopId || null} isAdmin={account.isAdmin} onCreated={bumpIbt}>
     <div className="wrap">
       <header className="app-header">
         <div className="logo-badge">
@@ -132,7 +142,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara IBT <span className="version-badge">v2.4</span>
+            Sara IBT <span className="version-badge">v2.5</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -228,6 +238,8 @@ export default function App() {
         </div>
       )}
 
+      <TransferCartPanel />
+
       {view === 'transfers' ? (
         <IbtTransfers
           incomingPending={ibtCounts.incoming_pending}
@@ -282,7 +294,7 @@ export default function App() {
             filters={filters}
             modelJump={modelJump}
             canRequest={!account.isAdmin && !!account.shopId}
-            onTransferCreated={bumpIbt}
+            isAdmin={account.isAdmin}
             myShopId={account.shopId || null}
             myCountry={account.shop?.country || null}
           />
@@ -302,11 +314,12 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.4</span>
+          <span>v2.5</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>
       </footer>
     </div>
+    </CartProvider>
   );
 }
