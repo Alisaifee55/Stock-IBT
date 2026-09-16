@@ -1,5 +1,12 @@
 // =============================================================
-// App.jsx — v2.7 — 15-09-2026
+// App.jsx — v2.7.1 — 15-09-2026
+// Changes from v2.7:
+//  - onUploaded is now a stable useCallback instead of a fresh inline
+//    arrow on every render. useCountryUpload takes it as a dependency,
+//    so a new identity each render churned the upload handler while an
+//    upload was running.
+//  - imports cards.css (collapsed country card is now a div, not a
+//    button — see CountryStatusCards.jsx v2.8, the real Excel fix).
 // Changes from v2.6.1:
 //  - imports cart.css, which makes the transfer cart a compact card
 //    when collapsed (see TransferCartPanel.jsx v2.7).
@@ -63,6 +70,7 @@ import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import './chat.css';
 import './cart.css';
+import './cards.css';
 import logo from './assets/sara-logo.png';
 import { useAuth } from './lib/AuthProvider';
 import { EMPTY_FILTERS, useShops } from './lib/stockQueries';
@@ -125,6 +133,14 @@ export default function App() {
     reload: reloadRefreshStamp,
     dismissError: dismissRefreshError,
   } = useSummaryRefresh({ onComplete: bumpData });
+
+  // Stable identity: useCountryUpload depends on this callback, so a
+  // new function every render churns the in-flight upload handler.
+  const handleUploaded = useCallback(() => {
+    bumpData();
+    refreshShops();
+    reloadRefreshStamp();
+  }, [bumpData, refreshShops, reloadRefreshStamp]);
 
   const { counts: ibtCounts, reload: reloadIbtCounts } = useIbtCounts(ibtToken);
   const bumpIbt = useCallback(() => {
@@ -214,7 +230,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara IBT <span className="version-badge">v2.7</span>
+            Sara IBT <span className="version-badge">v2.7.1</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -343,11 +359,7 @@ export default function App() {
           <CountryStatusCards
             refreshToken={refreshToken}
             isAdmin={account.isAdmin}
-            onUploaded={() => {
-              bumpData();
-              refreshShops();
-              reloadRefreshStamp();
-            }}
+            onUploaded={handleUploaded}
             trailingCard={
               account.isAdmin && (
                 <StorageSummaryCard refreshToken={refreshToken} onChanged={bumpData} />
@@ -403,7 +415,7 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.7</span>
+          <span>v2.7.1</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>

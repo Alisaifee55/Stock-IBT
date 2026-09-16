@@ -1,54 +1,47 @@
 // =============================================================
-// useAutoCollapse.js — v2.7 — 15-09-2026
-// Changes from v2.3: added hold() / release().
+// useAutoCollapse.js — v2.8 — 15-09-2026
+// Changes from v2.7: hold()/release() counters replaced with a single
+// `lockOpen` boolean argument.
 //
-// WHY — this is the Excel upload bug. The 5s auto-collapse timer kept
-// running while the operating system's file dialog was open. Browsing
-// for a file takes longer than 5 seconds, so the card collapsed
-// BEHIND the dialog, which unmounted the <input type="file"> inside
-// it. Its onChange therefore never fired: picking a file appeared to
-// do nothing except collapse the card. Nothing was broken in the
-// upload pipeline itself.
+// WHY THE REWRITE: v2.7's counters tried to stop the card collapsing
+// at the wrong moment. That was the wrong layer to fix it at — the
+// real bug was that collapsing UNMOUNTED the upload, so any missed
+// hold (a browser that doesn't fire 'cancel', an unexpected
+// re-render, focus events arriving in a different order on Windows)
+// destroyed an upload already in flight. The upload state now lives
+// in the card itself and survives collapse regardless — see
+// CountryStatusCards.jsx v2.8 — so this hook only has to answer one
+// question: may it auto-collapse right now?
 //
-// hold() suspends the timer and forces the card open; release() lets
-// it resume. It is a COUNTER, not a boolean, so two overlapping holds
-// can't cancel each other out — the card stays open until the last
-// one is released.
+// lockOpen = true means the caller is busy (file dialog open, upload
+// running). No timer is armed at all while it is true, and the card
+// reads as expanded. When it goes false, the 5s window starts fresh.
 // =============================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 const AUTO_COLLAPSE_MS = 5000;
 
-export function useAutoCollapse(deps = []) {
+export function useAutoCollapse(deps = [], lockOpen = false) {
   const [expanded, setExpanded] = useState(true);
-  const [holds, setHolds] = useState(0);
-  const timerRef = useRef(null);
 
   useEffect(() => {
-    // A held card never auto-collapses.
-    if (!expanded || holds > 0) return undefined;
-    timerRef.current = setTimeout(() => setExpanded(false), AUTO_COLLAPSE_MS);
-    return () => clearTimeout(timerRef.current);
-  }, [expanded, holds]);
+    if (lockOpen) {
+      setExpanded(true);
+      return undefined;
+    }
+    if (!expanded) return undefined;
+    const t = setTimeout(() => setExpanded(false), AUTO_COLLAPSE_MS);
+    return () => clearTimeout(t);
+  }, [expanded, lockOpen]);
 
-  // Restart the 5s window whenever the card's own data changes (a
-  // fresh upload, a refreshed total) — that's new information worth
-  // showing again, not just a re-render of the same numbers.
+  // Restart the 5s window when the card's own data changes — new
+  // information is worth showing again, unlike a plain re-render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setExpanded(true), deps);
 
   const expand = useCallback(() => setExpanded(true), []);
+  const collapse = useCallback(() => setExpanded(false), []);
 
-  /** Keep this card open — a file dialog is open, or work is running. */
-  const hold = useCallback(() => {
-    setExpanded(true);
-    setHolds((n) => n + 1);
-  }, []);
-
-  const release = useCallback(() => {
-    setHolds((n) => (n > 0 ? n - 1 : 0));
-  }, []);
-
-  return { expanded, expand, hold, release, held: holds > 0 };
+  return { expanded: expanded || lockOpen, expand, collapse };
 }

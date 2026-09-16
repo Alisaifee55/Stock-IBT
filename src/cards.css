@@ -1,0 +1,39 @@
+/* =============================================================
+   cards.css — v1.0 — 15-09-2026
+   New in v2.7.1. The collapsed country card is no longer a <button>
+   element — it is the same <div> as the expanded card with a button
+   inside it, because swapping element types made React destroy the
+   subtree and kill any upload running in it (see
+   CountryStatusCards.jsx v2.8).
+
+   These rules just make that inner button look like the collapsed
+   card used to. In its own file so App.css, which still styles
+   .country-card itself, is not reshipped.
+   ============================================================= */
+
+.country-card.is-collapsed {
+  cursor: pointer;
+  transition: transform 180ms ease;
+}
+.country-card.is-collapsed:hover { transform: scale(1.01); }
+
+.country-card-collapsed-hit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.country-card-collapsed-hit:focus-visible {
+  outline: 2px solid var(--teal-dark, #215a56);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
