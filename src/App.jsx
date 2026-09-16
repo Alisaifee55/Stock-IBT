@@ -1,5 +1,12 @@
 // =============================================================
-// App.jsx — v2.6.1 — 14-09-2026
+// App.jsx — v2.7 — 15-09-2026
+// Changes from v2.6.1:
+//  - imports cart.css, which makes the transfer cart a compact card
+//    when collapsed (see TransferCartPanel.jsx v2.7).
+//  - no other change in this file. The Excel upload fix lives in
+//    useAutoCollapse.js / CountryUploadZone.jsx / CountryStatusCards.jsx,
+//    and multi-shop messaging in ShopMultiPicker.jsx / MessagesView.jsx /
+//    chatQueries.js — none of which changed this file's props or imports.
 // Changes from v2.6: version badge only. The v2.6.1 fix itself is in
 // onesignal.js (init was passed malformed options, so the SDK never
 // registered a subscription) and MessagesView.jsx (the notification
@@ -55,6 +62,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import './chat.css';
+import './cart.css';
 import logo from './assets/sara-logo.png';
 import { useAuth } from './lib/AuthProvider';
 import { EMPTY_FILTERS, useShops } from './lib/stockQueries';
@@ -206,7 +214,7 @@ export default function App() {
         </div>
         <div>
           <h1>
-            Sara IBT <span className="version-badge">v2.6.1</span>
+            Sara IBT <span className="version-badge">v2.7</span>
           </h1>
           <div className="sub">
             {account.isAdmin ? 'Admin' : `Shop: ${account.shop?.name} (${account.shop?.code})`}
@@ -395,7 +403,7 @@ export default function App() {
       <footer className="app-footer">
         <div>Live data from Supabase — every shop sees the same current stock.</div>
         <div className="footer-meta">
-          <span>v2.6.1</span>
+          <span>v2.7</span>
           <span className="dot">&middot;</span>
           <span>&copy; 2026 AliAsgar...</span>
         </div>

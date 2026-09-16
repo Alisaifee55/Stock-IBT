@@ -1,18 +1,19 @@
 // =============================================================
-// CountryStatusCards.jsx — v2.3 — 12-09-2026
+// CountryStatusCards.jsx — v2.7 — 15-09-2026
+// Changes from v2.3: passes the auto-collapse hold/release handles
+// down to CountryUploadZone, so a card cannot collapse while a file
+// dialog is open or an upload is running. That collapse was what made
+// Excel upload appear to do nothing — see useAutoCollapse.js v2.7.
 // Changes from v2.1:
-//  - Each card now auto-collapses to a one-line summary 5s after
-//    being shown, and expands again on click — see useAutoCollapse.js.
-// Changes from v2.0:
-//  - Admin accounts now get an inline stock-upload drop-zone built
-//    directly into each country's card (replaces the old separate
-//    "Central stock upload" panel below the cards).
+//  - Each card auto-collapses to a one-line summary 5s after being
+//    shown, and expands again on click.
+// Unchanged from v2.0:
+//  - Admin accounts get an inline stock-upload drop-zone on each
+//    country card (replaced the old "Central stock upload" panel).
 //  - Accepts a `trailingCard` element so the caller can append one
-//    more card (Storage summary) to the same row without this
-//    component needing to know anything about storage.
-// Unchanged from v1.0/v2.0:
+//    more card (Storage summary) to the same row.
 //  - "Models (in stock)" vs "Models tracked" distinction.
-//  - Dates render as DD-MM-YYYY HH:MM, never the browser locale default.
+//  - Dates render DD-MM-YYYY HH:MM, never the browser locale default.
 // =============================================================
 
 import { COUNTRIES, useCountryStatus } from '../lib/stockQueries';
@@ -22,7 +23,7 @@ import CountryUploadZone from './CountryUploadZone';
 
 function CountryCard({ country, s, isAdmin, onUploaded }) {
   const upload = s?.upload;
-  const { expanded, expand } = useAutoCollapse([upload?.uploaded_at, upload?.row_count]);
+  const { expanded, expand, hold, release } = useAutoCollapse([upload?.uploaded_at, upload?.row_count]);
 
   if (!expanded) {
     return (
@@ -60,7 +61,14 @@ function CountryCard({ country, s, isAdmin, onUploaded }) {
       ) : (
         <div className="country-card-empty">No data uploaded yet</div>
       )}
-      {isAdmin && <CountryUploadZone country={country} onUploaded={onUploaded} />}
+      {isAdmin && (
+        <CountryUploadZone
+          country={country}
+          onUploaded={onUploaded}
+          onHold={hold}
+          onRelease={release}
+        />
+      )}
     </div>
   );
 }

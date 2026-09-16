@@ -1,5 +1,11 @@
 // =============================================================
-// chatQueries.js — v1.0 — 14-09-2026
+// chatQueries.js — v1.1 — 15-09-2026
+// Changes from v1.0: added sendToShops(), which delivers one message
+// to several shops at once. Each recipient gets its own ordinary 1:1
+// thread and its own read receipt — NOT a group thread, which would
+// expose one shop's reply to every other recipient. Sent in small
+// concurrent batches rather than all at once, so selecting 50 shops
+// doesn't fire 100 round trips simultaneously.
 // New in v2.6. Data layer for shop messaging. Everything goes
 // through SECURITY DEFINER RPCs (migration 25) that derive the
 // caller's shop from auth.uid(), so the client never passes its own
@@ -264,4 +270,40 @@ export async function notifyMessage(messageId) {
     console.warn('Push not sent:', err?.message);
     return { ok: false, error: err?.message };
   }
+}
+
+/**
+ * One message, many recipients. memberKeys are shop uuids as text
+ * and/or 'HO'. Each key gets its own 1:1 thread, so a reply goes only
+ * to the sender — selecting 20 shops does not create a group chat.
+ *
+ * Never throws: it returns a per-recipient result so the UI can show
+ * exactly who it reached and who it didn't, and one shop failing
+ * doesn't lose the other nineteen.
+ */
+export async function sendToShops(memberKeys, body, { batchSize = 4 } = {}) {
+  const keys = Array.from(new Set((memberKeys || []).map(String).filter(Boolean)));
+  const results = [];
+
+  for (let i = 0; i < keys.length; i += batchSize) {
+    const batch = keys.slice(i, i + batchSize);
+    // eslint-disable-next-line no-await-in-loop
+    const settled = await Promise.all(
+      batch.map(async (key) => {
+        try {
+          const threadId = await openThread(key);
+          const msg = await sendMessage(threadId, body);
+          // Push is fired after the message is stored and its outcome
+          // deliberately does not affect this result.
+          notifyMessage(msg?.id);
+          return { key, ok: true, threadId };
+        } catch (err) {
+          return { key, ok: false, error: err?.message || 'Could not send' };
+        }
+      })
+    );
+    results.push(...settled);
+  }
+
+  return results;
 }

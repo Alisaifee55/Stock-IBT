@@ -1,14 +1,22 @@
 // =============================================================
-// TransferCartPanel.jsx — v2.5 — 13-09-2026
-// Changes from v2.3: this is now the APP-LEVEL cart bar — mounted
-// once in App.jsx (not per-model-console), reading the shared cart
-// from cartContext.jsx instead of local props. It can hold lines from
-// many different shops AND many different models at once, grouped by
-// (requesting shop, supplying shop) — one IBT transfer gets created
-// per group on submit, however many models are inside it. A group's
-// direction is labelled "Request from X" / "Send to X" from the
-// viewer's own shop, or "Head Office: X -> Y" for an admin-built
-// transfer between two shops that aren't the viewer's own.
+// TransferCartPanel.jsx — v2.7 — 15-09-2026
+// Changes from v2.5: the collapsed state is now a COMPACT CARD rather
+// than a full-width bar. It sits in the same place under the header,
+// takes only the width it needs, and expands to the full panel on
+// click — the same pattern as the collapsed country cards.
+//
+// Results are the one thing that still force it open: a transfer that
+// just failed must not be hidden behind a collapsed card, since the
+// failure text is the only place the reason appears.
+//
+// Unchanged from v2.5: this is the APP-LEVEL cart, mounted once in
+// App.jsx, reading the shared cart from cartContext.jsx. It can hold
+// lines from many shops AND many models at once, grouped by
+// (requesting shop, supplying shop) — one IBT transfer is created per
+// group on submit, however many models are inside it. A group's
+// direction reads "Request from X" / "Send to X" from the viewer's
+// own shop, or "Head Office: X -> Y" for an admin-built transfer
+// between two shops that aren't the viewer's own.
 // =============================================================
 
 import { useState } from 'react';
@@ -25,14 +33,23 @@ export default function TransferCartPanel() {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   const hasCart = cart.totalLines > 0;
-  const open = detailsOpen || (cart.results && cart.results.length > 0);
+  const hasResults = !!(cart.results && cart.results.length > 0);
+  const open = detailsOpen || hasResults;
 
-  if (!hasCart && !(cart.results && cart.results.length > 0)) return null;
+  if (!hasCart && !hasResults) return null;
+
+  const failed = hasResults ? cart.results.filter((r) => !r.ok).length : 0;
 
   return (
-    <div className={`transfer-cart-bar-wrap${open ? ' is-open' : ''}`}>
+    <div className={`transfer-cart-bar-wrap cartbar-compact${open ? ' is-open' : ''}`}>
       <div className="transfer-cart-bar">
-        <button type="button" className="cartbar-toggle" onClick={() => setDetailsOpen((o) => !o)} aria-expanded={open}>
+        <button
+          type="button"
+          className="cartbar-toggle"
+          onClick={() => setDetailsOpen((o) => !o)}
+          aria-expanded={open}
+          title={open ? 'Collapse the cart' : 'Expand the cart'}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="cartbar-icon">
             <path d="M4 6h16l-1.5 9h-13z" />
             <path d="M4 6l-1-3" />
@@ -45,6 +62,8 @@ export default function TransferCartPanel() {
                 {cart.groups.length} transfer{cart.groups.length === 1 ? '' : 's'} &middot; {cart.totalQty} unit
                 {cart.totalQty === 1 ? '' : 's'}
               </>
+            ) : failed > 0 ? (
+              `${failed} failed`
             ) : (
               'Cart cleared'
             )}
@@ -68,7 +87,7 @@ export default function TransferCartPanel() {
 
       {open && (
         <div className="transfer-cart-details">
-          {cart.results && cart.results.length > 0 && (
+          {hasResults && (
             <div className="transfer-cart-results">
               {cart.results.map((r, i) => (
                 <div key={i} className={`transfer-result-row${r.ok ? ' is-ok' : ' is-error'}`}>

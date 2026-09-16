@@ -1,5 +1,13 @@
 // =============================================================
-// MessagesView.jsx — v1.1 — 14-09-2026
+// MessagesView.jsx — v1.2 — 15-09-2026
+// Changes from v1.1: "New message" now uses ShopMultiPicker, so one
+// message can go to several shops (and/or Head Office) in one action.
+// Picking one shop behaves exactly as before — straight into that
+// conversation. Picking several opens a compose box and then reports
+// per-shop delivery, because each recipient gets its own ordinary 1:1
+// thread with its own read receipt; it is never a group thread, which
+// would show one shop's reply to all the others.
+// Changes from v1.0:
 // Changes from v1.0: the notification banner no longer HIDES ITSELF
 // when push is unavailable. v1.0 only rendered it while the SDK
 // reported supported === true, so a failed OneSignal init removed the
@@ -25,10 +33,11 @@
 // =============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import ShopPickerPopover from './ShopPickerPopover';
+import ShopMultiPicker from './ShopMultiPicker';
 import ThreadView from './ThreadView';
 import {
   openThread,
+  sendToShops,
   threadLabel,
   useChatRealtime,
   useInbox,
@@ -65,6 +74,10 @@ export default function MessagesView({
   const [activeId, setActiveId] = useState(null);
   const [chatToken, setChatToken] = useState(0);
   const [picking, setPicking] = useState(false);
+  const [bulk, setBulk] = useState(null); // { keys: [] } while composing
+  const [bulkDraft, setBulkDraft] = useState('');
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkResults, setBulkResults] = useState(null);
   const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState('');
   const [push, setPush] = useState(null);
@@ -144,7 +157,7 @@ export default function MessagesView({
 
   // Everyone this account can start a conversation with. Head Office
   // is a real participant without a shop row, so it joins the list as
-  // a pseudo-shop keyed 'HO' — ShopPickerPopover only needs
+  // a pseudo-shop keyed 'HO' — ShopMultiPicker only needs
   // id/code/country and works unchanged.
   const pickerShops = useMemo(() => {
     const real = [...shopsList]
@@ -153,6 +166,41 @@ export default function MessagesView({
     if (account?.isAdmin) return real;
     return [{ id: HO_KEY, code: 'Head Office', country: null }, ...real];
   }, [shopsList, account?.isAdmin]);
+
+  // One selection behaves as before; several opens the compose step.
+  const confirmPick = async (keys) => {
+    if (!Array.isArray(keys) || keys.length === 0) return;
+    if (keys.length === 1) {
+      await start(String(keys[0]));
+      return;
+    }
+    setPicking(false);
+    setBulkResults(null);
+    setBulkDraft('');
+    setBulk({ keys: keys.map(String) });
+  };
+
+  const labelForKey = useCallback(
+    (key) => {
+      if (key === HO_KEY) return 'Head Office';
+      const shop = shopsList.find((x) => String(x.id) === String(key));
+      return shop?.code || 'Shop';
+    },
+    [shopsList]
+  );
+
+  const sendBulk = async () => {
+    const body = bulkDraft.trim();
+    if (!body || bulkSending || !bulk) return;
+    setBulkSending(true);
+    const results = await sendToShops(bulk.keys, body);
+    setBulkResults(results);
+    setBulkSending(false);
+    if (results.every((r) => r.ok)) setBulkDraft('');
+    reload();
+    bump();
+    onChanged?.();
+  };
 
   const start = async (memberKey) => {
     if (opening) return;
@@ -363,13 +411,134 @@ export default function MessagesView({
       </div>
 
       {picking && (
-        <ShopPickerPopover
+        <ShopMultiPicker
           title="Send a message to…"
           shops={pickerShops}
           excludeShopId={account?.shopId || null}
-          onPick={(s) => start(String(s.id))}
+          onConfirm={confirmPick}
           onClose={() => setPicking(false)}
+          busy={opening}
         />
+      )}
+
+      {bulk && (
+        <div
+          className="modal-backdrop"
+          onClick={bulkSending ? undefined : () => setBulk(null)}
+          role="presentation"
+        >
+          <div
+            className="modal-card chat-bulk-card"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Message several shops"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-head">
+              <h4>Message {bulk.keys.length} shops</h4>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setBulk(null)}
+                aria-label="Close"
+                disabled={bulkSending}
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="chat-bulk-body">
+              <div className="chat-bulk-to">
+                {bulk.keys.map((k) => (
+                  <span className="chat-bulk-chip" key={k}>
+                    {labelForKey(k)}
+                  </span>
+                ))}
+              </div>
+
+              {!bulkResults && (
+                <>
+                  <textarea
+                    className="chat-input chat-bulk-input"
+                    rows={4}
+                    maxLength={4000}
+                    value={bulkDraft}
+                    placeholder="Type the message once — each shop gets it privately…"
+                    onChange={(e) => setBulkDraft(e.target.value)}
+                    aria-label="Message to send to the selected shops"
+                    disabled={bulkSending}
+                  />
+                  <div className="zero-stock-hint">
+                    Each shop receives this as its own private conversation. They cannot
+                    see each other's replies.
+                  </div>
+                </>
+              )}
+
+              {bulkResults && (
+                <div className="chat-bulk-results">
+                  {bulkResults.map((r) => (
+                    <div
+                      className={`chat-bulk-result${r.ok ? ' is-ok' : ' is-error'}`}
+                      key={r.key}
+                    >
+                      <strong>{labelForKey(r.key)}</strong>
+                      {r.ok ? ' — sent' : ` — not sent: ${r.error}`}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="chat-bulk-actions">
+              {bulkResults ? (
+                <>
+                  {bulkResults.some((r) => !r.ok) && (
+                    <button
+                      type="button"
+                      className="btn btn-reset"
+                      onClick={() => {
+                        setBulk({ keys: bulkResults.filter((r) => !r.ok).map((r) => r.key) });
+                        setBulkResults(null);
+                      }}
+                    >
+                      Retry the failed ones
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-primary" onClick={() => setBulk(null)}>
+                    Done
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-reset"
+                    onClick={() => setBulk(null)}
+                    disabled={bulkSending}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={sendBulk}
+                    disabled={bulkSending || !bulkDraft.trim()}
+                  >
+                    {bulkSending ? (
+                      <>
+                        <span className="refresh-spinner" aria-hidden="true" /> Sending to{' '}
+                        {bulk.keys.length}…
+                      </>
+                    ) : (
+                      `Send to ${bulk.keys.length} shops`
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
